@@ -63,15 +63,18 @@ export default function ShopPage() {
           </motion.div>
         ))}
       </div>
-
+ 
       {/* Link to promo page */}
-      <div className="mt-8 text-center">
-        <Link
-          href="/promo"
-          className="inline-block bg-soft-lavender hover:bg-soft-lavender/90 text-white font-semibold px-6 py-3 rounded-2xl transition"
-        >
-          Have a Promo Code?
-        </Link>
+      <div className="mt-8 flex justify-center gap-4 flex-wrap">
+      <Link
+      href="/home" className="bg-rose-pink hover:bg-rose-pink/90 text-white font-semibold px-6 py-3 rounded-2xl transition"
+      >
+      ← Back to Menu
+      </Link>
+      <Link href="/promo" className="bg-soft-lavender hover:bg-soft-lavender/90 text-white font-semibold px-6 py-3 rounded-2xl transition"
+      >
+      Have a Promo Code?
+      </Link>
       </div>
     </div>
   )

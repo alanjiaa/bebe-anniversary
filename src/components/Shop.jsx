@@ -4,7 +4,11 @@ import ShopItem from './ShopItem';
 const items = [
   { id: 1, name: 'Free Boba 🧋', points: 20 },
   { id: 2, name: 'Massage 💆‍♀️', points: 50 },
-  { id: 3, name: 'Date Night 🍽️', points: 100 },
+  { id: 3, name: 'Cinema Date', points: 80 },
+  { id: 4, name: 'Meet Fresh', points: 30 },
+  { id: 5, name: 'Fried Chicken', points: 65 },
+  { id: 6, name: 'Free Coffee', points: 10 },
+  { id: 7, name: 'Sephora Gift', points: 500 }
 ];
 
 export default function Shop() {

@@ -12,7 +12,9 @@ const items = [
   { id: 4, name: 'Meet Fresh',   image: '/images/shopping/meetfresh.jpeg',     points: 30 },
   { id: 5, name: 'Fried Chicken',   image: '/images/shopping/jolibee.webp',     points: 65 },
   { id: 6, name: 'Free Coffee',   image: '/images/shopping/coffee.jpg',     points: 10 },
+  { id: 7, name: 'Sephora Gift ',   image: '/images/shopping/sephora.webp',     points: 500 }
 ]
+
 
 export default function ShopPage() {
   const { points, addToCart } = useCart()

@@ -2,6 +2,7 @@
 import FallingPolaroids from '@/components/FallingPolaroids'
 import { motion } from 'framer-motion'
 import Link from 'next/link'
+import VersionFooter from '../src/components/VersionFooter';
 
 const container = {
   hidden: {},
@@ -37,7 +38,7 @@ export default function HomeMenu() {
       <div className="absolute inset-0 z-0">
         <FallingPolaroids />
       </div>
-
+      <VersionFooter />
       {/* Centered menu card */}
       <div className="relative z-10 flex items-center justify-center min-h-screen px-4">
         <motion.div
@@ -50,7 +51,7 @@ export default function HomeMenu() {
             className="font-script text-4xl text-rose-pink mb-8 drop-shadow"
             variants={heading}
           >
-            Hoiiiii bebe welcome to our 1 year anniversary!
+            Welcome to Bebe Land!
           </motion.h1>
 
           <motion.div className="flex flex-col sm:flex-row gap-6" variants={container}>
@@ -60,10 +61,9 @@ export default function HomeMenu() {
                 className="block bg-rose-pink hover:bg-rose-pink/90 text-white font-semibold
                            px-6 py-3 rounded-2xl text-lg transition"
               >
-                View Our Memories
+                View Our Memories📸
               </Link>
             </motion.div>
-
             <motion.div variants={item}>
               <Link
                 href="/shop"
@@ -73,9 +73,18 @@ export default function HomeMenu() {
                 Spend Alsie Points
               </Link>
             </motion.div>
+            <motion.div variants={item}>
+              <Link
+                href="/complaints"
+                className="block bg-black hover:bg-soft-lavender/90 text-white font-semibold
+                           px-6 py-3 rounded-2xl text-lg transition"
+              >
+                Send Complaint🥲
+              </Link>
+            </motion.div>
           </motion.div>
         </motion.div>
       </div>
-    </div>
+    </div>   
   )
 }

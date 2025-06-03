@@ -1,6 +1,7 @@
 // pages/_app.js
 import '../styles/globals.css'
 import { useRouter } from 'next/router'
+import { AuthProvider } from '@/context/AuthContext'
 import { CartProvider } from '../src/context/CartContext'
 import dynamic from 'next/dynamic'
 import { Toaster } from 'react-hot-toast'
@@ -22,11 +23,13 @@ export default function MyApp({ Component, pageProps }) {
   const showHeader = !hideHeaderOn.includes(router.pathname)
 
   return (
-    <CartProvider>
-      {showHeader && <UserHeader />}
-      <Component {...pageProps} />
-      {showCartPreview && <CartPreview />}
-      <Toaster position="top-right" />
-    </CartProvider>
+    <AuthProvider>
+      <CartProvider>
+        {showHeader && <UserHeader />}
+        <Component {...pageProps} />
+        {showCartPreview && <CartPreview />}
+        <Toaster position="top-right" />
+      </CartProvider>
+    </AuthProvider>
   )
 }

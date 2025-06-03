@@ -20,7 +20,7 @@ export default function Gallery() {
 
   if (loading || (!user && typeof window !== 'undefined')) return null
 
-  if (!isAuthorized && user?.email !== 'vivi_444@icloud.com' || user.email !== 'alanjiaa@gmail.com') {
+  if (!isAuthorized && user?.email !== 'vivi_444@icloud.com' && user.email !== 'alanjiaa@gmail.com') {
     return (
       <div className="min-h-screen bg-cream flex items-center justify-center flex-col text-center p-6">
         <h1 className="text-3xl font-script mb-4">🔒 Access Denied</h1>

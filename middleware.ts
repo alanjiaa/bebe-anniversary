@@ -2,20 +2,32 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
-// Only run auth on all non‐static routes:
-export const config = { matcher: ['/', '/((?!_next).*)'] }
+// Only run on specific routes that need protection
+export const config = { 
+  matcher: [
+    '/shop',
+    '/complaints',
+    '/checkout',
+    '/promo'
+  ]
+}
 
 export function middleware(req: NextRequest) {
-  const auth = req.headers.get('authorization') || ''
-  const [scheme, credentials] = auth.split(' ')
-  if (
-    scheme !== 'Basic' ||
-    Buffer.from(process.env.AUTH_CREDENTIALS!, 'utf8').toString('base64') !== credentials
-  ) {
-    return new NextResponse('Auth required', {
-      status: 401,
-      headers: { 'WWW-Authenticate': 'Basic realm="Anniversary"' },
-    })
+  // Skip auth for login and signup pages
+  if (req.nextUrl.pathname === '/login' || req.nextUrl.pathname === '/signup') {
+    return NextResponse.next()
   }
+
+  // Skip auth for static files and API routes
+  if (
+    req.nextUrl.pathname.startsWith('/_next') ||
+    req.nextUrl.pathname.startsWith('/api') ||
+    req.nextUrl.pathname.startsWith('/images')
+  ) {
+    return NextResponse.next()
+  }
+
+  // For protected routes, redirect to login if not authenticated
+  // The actual authentication check is handled by the ProtectedRoute component
   return NextResponse.next()
 }

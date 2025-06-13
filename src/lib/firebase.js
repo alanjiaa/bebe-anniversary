@@ -2,6 +2,7 @@
 import { initializeApp } from "firebase/app";
 import { getAuth } from 'firebase/auth'
 import { getAnalytics } from "firebase/analytics";
+import { getFirestore, enableIndexedDbPersistence } from 'firebase/firestore';
 // TODO: Add SDKs for Firebase products that you want to use
 // https://firebase.google.com/docs/web/setup#available-libraries
 
@@ -19,7 +20,21 @@ const firebaseConfig = {
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
-const auth = getAuth(app)
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+// Enable offline persistence
+try {
+  enableIndexedDbPersistence(db).catch((err) => {
+    if (err.code === 'failed-precondition') {
+      console.warn('Multiple tabs open, persistence can only be enabled in one tab at a time.');
+    } else if (err.code === 'unimplemented') {
+      console.warn('The current browser does not support persistence.');
+    }
+  });
+} catch (error) {
+  console.error('Error enabling persistence:', error);
+}
 
 //const analytics = getAnalytics(app);
-export {auth, app};
+export { auth, app, db };

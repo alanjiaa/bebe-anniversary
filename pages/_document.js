@@ -5,6 +5,9 @@ export default function Document() {
   return (
     <Html lang="en">
       <Head>
+        {/* Import Inter font from Google Fonts */}
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+        
         {/* 1) Pull in Tailwind from the CDN */}
         <script src="https://cdn.tailwindcss.com"></script>
 

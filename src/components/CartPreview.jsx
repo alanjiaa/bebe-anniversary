@@ -11,9 +11,11 @@ export default function CartPreview() {
   const total = cart.reduce((sum, i) => sum + i.points * i.qty, 0)
   const [open, setOpen] = useState(false)
 
-  const handleCheckout = () => {
-    checkout()                // redeem points & save purchase
-    router.push('/checkout')  // go to receipt page
+  const handleCheckout = async () => {
+    const success = await checkout()
+    if (success) {
+      router.push('/checkout')
+    }
   }
 
   // hide on certain pages

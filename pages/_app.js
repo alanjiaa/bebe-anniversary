@@ -6,6 +6,7 @@ import { CartProvider } from '../src/context/CartContext'
 import dynamic from 'next/dynamic'
 import { Toaster } from 'react-hot-toast'
 import UserHeader from '../src/components/UserHeader'
+import MusicPlayer from '../src/components/MusicPlayer'
 
 // Only load the CartPreview on the client to avoid SSR mismatches
 const CartPreview = dynamic(
@@ -28,6 +29,7 @@ export default function MyApp({ Component, pageProps }) {
         {showHeader && <UserHeader />}
         <Component {...pageProps} />
         {showCartPreview && <CartPreview />}
+        <MusicPlayer />
         <Toaster position="top-right" />
       </CartProvider>
     </AuthProvider>

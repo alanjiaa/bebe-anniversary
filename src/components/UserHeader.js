@@ -32,6 +32,7 @@ export default function UserHeader() {
         background: '#f5f5f5',
         borderBottom: '1px solid #ddd',
       }}
+      className="font-sans"
     >
       {/* Left side: user info or guest */}
       <div style={{ display: 'flex', alignItems: 'center' }}>

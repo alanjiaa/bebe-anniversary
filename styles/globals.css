@@ -1,3 +1,7 @@
 /* styles/globals.css */
 /* your custom overrides… */
 /* e.g. hide scrollbars, extra resets, etc. */
+
+body, html {
+  font-family: 'Poppins', Arial, Helvetica, sans-serif;
+}

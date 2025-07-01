@@ -42,7 +42,7 @@ export default function HomeMenu() {
       {/* Centered menu card */}
       <div className="relative z-10 flex items-center justify-center min-h-screen px-4">
         <motion.div
-          className="bg-white/60 backdrop-blur-md p-10 rounded-3xl shadow-2xl w-full max-w-lg text-center"
+          className="bg-white/60 backdrop-blur-md p-10 rounded-3xl shadow-2xl w-full max-w-xl text-center"
           initial="hidden"
           animate="show"
           variants={container}
@@ -54,7 +54,7 @@ export default function HomeMenu() {
             Welcome to Bebe Land!
           </motion.h1>
 
-          <motion.div className="flex flex-col sm:flex-row gap-6" variants={container}>
+          <motion.div className="grid justify-center gap-6" variants={container}>
             <motion.div variants={item}>
               <Link
                 href="/gallery"
@@ -71,6 +71,16 @@ export default function HomeMenu() {
                            px-6 py-3 rounded-2xl text-lg transition"
               >
                 Spend Alsie Points
+              </Link>
+            </motion.div>
+            <motion.div variants={item}>
+              <Link
+                href="/photobooth"
+                className="block bg-rose-pink hover:bg-rose-pink/90 text-white font-semibold
+                           px-6 py-3 rounded-2xl text-lg transition"
+                style={{ fontFamily: 'Poppins, Arial, Helvetica, sans-serif' }}
+              >
+                Photobooth!
               </Link>
             </motion.div>
             <motion.div variants={item}>

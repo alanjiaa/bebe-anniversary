@@ -22,6 +22,7 @@ export function CartProvider({ children }) {
     catch { return [] }
   })
   const [points, setPoints] = useState(150)
+  const [pounds, setPounds] = useState(0)
   const [isLoading, setIsLoading] = useState(true)
 
   // Load points from Firestore when user changes
@@ -41,18 +42,27 @@ export function CartProvider({ children }) {
         if (doc.exists()) {
           const userData = doc.data()
           const currentPoints = userData.points
+          const currentPounds = userData.pounds || 0
           // Handle both number and string types, and ensure it's a valid number
           const pointsValue = typeof currentPoints === 'string' ? 
             parseInt(currentPoints, 10) : 
             (typeof currentPoints === 'number' ? currentPoints : 150)
+          const poundsValue = typeof currentPounds === 'string' ? 
+            parseFloat(currentPounds) : 
+            (typeof currentPounds === 'number' ? currentPounds : 0)
           
           console.log('Points updated from Firestore:', pointsValue)
+          console.log('Pounds updated from Firestore:', poundsValue)
           setPoints(pointsValue)
+          setPounds(poundsValue)
         } else {
           // Initialize new user with default points
-          console.log('Initializing new user with 150 points')
-          setDoc(userDoc, { points: 150 })
-            .then(() => setPoints(150))
+          console.log('Initializing new user with 150 points and 0 pounds')
+          setDoc(userDoc, { points: 150, pounds: 0 })
+            .then(() => {
+              setPoints(150)
+              setPounds(0)
+            })
             .catch(error => {
               console.error('Error initializing user:', error)
               toast.error('Error setting up your account')
@@ -143,11 +153,72 @@ export function CartProvider({ children }) {
     }
   }
 
+  const exchangePointsForPounds = async (pointsToExchange) => {
+    if (!user) {
+      toast.error('Please log in to exchange points')
+      return false
+    }
+
+    if (pointsToExchange > points) {
+      toast.error('Not enough Alsie Points!')
+      return false
+    }
+
+    if (pointsToExchange < 100) {
+      toast.error('Minimum exchange is 100 Alsie Points for £10')
+      return false
+    }
+
+    if (pointsToExchange % 100 !== 0) {
+      toast.error('Points must be exchanged in multiples of 100')
+      return false
+    }
+
+    try {
+      const userDoc = doc(db, 'users', user.uid)
+      const poundsToAdd = pointsToExchange / 10 // 100 points = £10
+      const newPoints = points - pointsToExchange
+      const newPounds = pounds + poundsToAdd
+
+      await updateDoc(userDoc, { 
+        points: newPoints, 
+        pounds: newPounds 
+      })
+      
+      console.log('Points exchanged for pounds in Firestore:', { newPoints, newPounds })
+      toast.success(`Exchanged ${pointsToExchange} points for £${poundsToAdd}! 💰`)
+      return true
+    } catch (error) {
+      console.error('Error exchanging points:', error)
+      toast.error('Error exchanging points')
+      return false
+    }
+  }
+
+  const updatePounds = async (newPounds) => {
+    if (!user) {
+      toast.error('Please log in to update pounds')
+      return false
+    }
+
+    try {
+      const userDoc = doc(db, 'users', user.uid)
+      await updateDoc(userDoc, { pounds: newPounds })
+      console.log('Pounds updated in Firestore:', newPounds)
+      return true
+    } catch (error) {
+      console.error('Error updating pounds:', error)
+      toast.error('Error updating pounds')
+      return false
+    }
+  }
+
   return (
     <CartContext.Provider value={{
-      cart, points, isLoading,
+      cart, points, pounds, isLoading,
       addToCart, removeFromCart, updateQuantity,
-      checkout, applyPromo, clearCart
+      checkout, applyPromo, clearCart,
+      exchangePointsForPounds, updatePounds
     }}>
       {children}
     </CartContext.Provider>

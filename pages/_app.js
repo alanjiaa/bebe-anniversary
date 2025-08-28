@@ -20,8 +20,10 @@ export default function MyApp({ Component, pageProps }) {
   // Only show CartPreview on /shopping page
   const showCartPreview = router.pathname === '/shop'
   const hideHeaderOn = ['/login', '/signup']
+  const hideMusicPlayerOn = ['/shop']
 
   const showHeader = !hideHeaderOn.includes(router.pathname)
+  const showMusicPlayer = !hideMusicPlayerOn.includes(router.pathname)
 
   return (
     <AuthProvider>
@@ -29,7 +31,7 @@ export default function MyApp({ Component, pageProps }) {
         {showHeader && <UserHeader />}
         <Component {...pageProps} />
         {showCartPreview && <CartPreview />}
-        <MusicPlayer />
+        {showMusicPlayer && <MusicPlayer />}
         <Toaster position="top-right" />
       </CartProvider>
     </AuthProvider>

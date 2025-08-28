@@ -92,6 +92,15 @@ export default function HomeMenu() {
                 Send Complaint🥲
               </Link>
             </motion.div>
+            <motion.div variants={item}>
+              <Link
+                href="/casino"
+                className="block bg-green-600 hover:bg-green-700 text-white font-semibold
+                           px-6 py-3 rounded-2xl text-lg transition"
+              >
+                Bebe Casino 🎰
+              </Link>
+            </motion.div>
           </motion.div>
         </motion.div>
       </div>

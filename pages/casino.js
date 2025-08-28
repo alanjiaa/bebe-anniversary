@@ -17,6 +17,15 @@ const games = [
     comingSoon: false
   },
   {
+    id: 'cardgame',
+    name: 'Chinese Card Game',
+    description: 'Multiplayer card game - get rid of all your cards!',
+    image: '/images/shopping/coffee.jpg',
+    minBet: 0.50,
+    maxBet: 100,
+    comingSoon: false
+  },
+  {
     id: 'blackjack',
     name: 'Blackjack',
     description: 'Beat the dealer to 21',

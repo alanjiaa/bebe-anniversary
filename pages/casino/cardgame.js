@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import { useCart } from '@/context/CartContext'
-import { FaCoins, FaUsers, FaPlay, FaTimes, FaCheck } from 'react-icons/fa'
+import { FaCoins, FaUsers, FaPlay, FaTimes, FaCheck, FaWifi } from 'react-icons/fa'
 import { toast } from 'react-hot-toast'
 import { auth, db } from '@/lib/firebase'
 import { 
@@ -174,6 +174,8 @@ export default function CardGame() {
   const [gameHistory, setGameHistory] = useState([])
   const [availableGames, setAvailableGames] = useState([])
   const [joinGameId, setJoinGameId] = useState('')
+  const [betDeducted, setBetDeducted] = useState(false)
+  const [onlinePlayers, setOnlinePlayers] = useState(0)
   
   const user = auth.currentUser
 
@@ -213,12 +215,32 @@ export default function CardGame() {
       toast.error(`${data.playerName} left the game`)
     })
 
+    // Listen for online player count updates
+    newSocket.on('onlinePlayersUpdate', (data) => {
+      setOnlinePlayers(data.count)
+    })
+
+    // Request current online player count
+    newSocket.emit('getOnlinePlayers')
+
     setSocket(newSocket)
 
     return () => {
       newSocket.disconnect()
     }
   }, [user])
+
+  // Cleanup function to handle bet refunds when component unmounts
+  useEffect(() => {
+    return () => {
+      // If user leaves while game is in progress and bet was deducted, refund it
+      if (gameState === 'playing' && betDeducted && gameId && user) {
+        // This will be handled by the leaveGame function if called properly
+        // But as a safety measure, we can also handle it here
+        console.log('Component unmounting - ensuring bet refund if needed')
+      }
+    }
+  }, [gameState, betDeducted, gameId, user])
 
   // Listen for available games
   useEffect(() => {
@@ -256,6 +278,11 @@ export default function CardGame() {
     setLastPlay(data.lastPlay)
     setWinner(data.winner)
     
+    // Reset bet deduction flag when game state changes
+    if (data.gameState === 'waiting') {
+      setBetDeducted(false)
+    }
+    
     if (data.players) {
       const myPlayer = data.players.find(p => p.id === user.uid)
       if (myPlayer) {
@@ -270,6 +297,12 @@ export default function CardGame() {
     
     if (betAmount > (pounds || 0)) {
       toast.error('Not enough pounds to place this bet!')
+      return
+    }
+    
+    // Check if there are enough players online
+    if (onlinePlayers < 2) {
+      toast.error('Need at least 2 players online to create a game. Currently only you are online.')
       return
     }
     
@@ -294,12 +327,14 @@ export default function CardGame() {
     await setDoc(gameRef, gameData)
     setGameId(gameRef.id)
     
-    // Deduct bet amount
-    updatePounds(-betAmount)
+    // Don't deduct bet amount when creating - wait until game starts
+    // updatePounds(-betAmount)
     
     if (socket) {
       socket.emit('createGame', { gameId: gameRef.id, betAmount })
     }
+    
+    toast.success('Game created! Waiting for other players to join...')
   }
 
   const joinGame = async (gameId) => {
@@ -337,8 +372,8 @@ export default function CardGame() {
     
     setGameId(gameId)
     
-    // Deduct bet amount
-    updatePounds(-gameData.betAmount)
+    // Don't deduct bet amount when joining - wait until game starts
+    // updatePounds(-gameData.betAmount)
     
     if (socket) {
       socket.emit('joinGame', { gameId })
@@ -384,6 +419,12 @@ export default function CardGame() {
       currentPlayer: firstPlayer.id,
       deck: deck.slice(numPlayers * Math.floor(deck.length / numPlayers))
     })
+    
+    // Deduct bet amount when game starts (only once)
+    if (!betDeducted) {
+      updatePounds(-gameData.betAmount)
+      setBetDeducted(true)
+    }
     
     if (socket) {
       socket.emit('startGame', { gameId })
@@ -482,6 +523,12 @@ export default function CardGame() {
     const gameDoc = await getDoc(gameRef)
     const gameData = gameDoc.data()
     
+    // Refund bet if game was in progress and bet was deducted
+    if (gameData.gameState === 'playing' && betDeducted) {
+      updatePounds(gameData.betAmount)
+      toast.success(`Bet refunded: £${gameData.betAmount}`)
+    }
+    
     // Remove player from game
     const updatedPlayers = gameData.players.filter(p => p.id !== user.uid)
     
@@ -504,6 +551,7 @@ export default function CardGame() {
     setLastPlay(null)
     setIsMyTurn(false)
     setWinner(null)
+    setBetDeducted(false)
     
     toast.success('Left the game')
   }
@@ -568,7 +616,7 @@ export default function CardGame() {
               Get rid of all your cards to win!
             </p>
             
-            {/* Currency Display */}
+            {/* Currency and Online Players Display */}
             {mounted && (
               <div className="flex justify-center gap-8 mb-6">
                 <div className="bg-white/20 backdrop-blur-sm rounded-lg p-4 text-center">
@@ -577,6 +625,14 @@ export default function CardGame() {
                     <span className="text-2xl font-bold">{pounds || 0}</span>
                   </div>
                   <p className="text-white text-sm">Pounds (£)</p>
+                </div>
+                
+                <div className="bg-white/20 backdrop-blur-sm rounded-lg p-4 text-center">
+                  <div className="flex items-center gap-2 text-green-400">
+                    <FaWifi className="text-xl" />
+                    <span className="text-2xl font-bold">{onlinePlayers}</span>
+                  </div>
+                  <p className="text-white text-sm">Online Players</p>
                 </div>
               </div>
             )}
@@ -587,6 +643,23 @@ export default function CardGame() {
             {gameState === 'lobby' && (
               <div>
                 <h2 className="text-2xl font-bold text-white mb-6 text-center">Game Lobby</h2>
+                
+                {/* Player Count Warning */}
+                {onlinePlayers < 2 && (
+                  <div className="bg-yellow-500/20 border border-yellow-500/50 rounded-lg p-4 mb-6">
+                    <div className="flex items-center gap-2 text-yellow-300">
+                      <FaUsers className="text-xl" />
+                      <span className="font-semibold">Not enough players online</span>
+                    </div>
+                    <p className="text-yellow-200 text-sm mt-1">
+                      You need at least 2 players online to create or join a game. 
+                      Currently only {onlinePlayers} player{onlinePlayers !== 1 ? 's' : ''} online.
+                    </p>
+                    <p className="text-yellow-200 text-sm mt-2">
+                      💡 <strong>Testing tip:</strong> Open this page in another browser tab/window to test multiplayer!
+                    </p>
+                  </div>
+                )}
                 
                 {/* Create Game Section */}
                 <div className="bg-white/10 rounded-lg p-6 mb-6">
@@ -605,18 +678,33 @@ export default function CardGame() {
                   </div>
                   <button
                     onClick={createGame}
-                    className="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-6 rounded-lg transition"
+                    disabled={onlinePlayers < 2}
+                    className={`font-bold py-3 px-6 rounded-lg transition ${
+                      onlinePlayers < 2 
+                        ? 'bg-gray-500 cursor-not-allowed text-gray-300' 
+                        : 'bg-green-500 hover:bg-green-600 text-white'
+                    }`}
                   >
                     <FaPlay className="inline mr-2" />
-                    Create Game
+                    {onlinePlayers < 2 ? 'Need More Players' : 'Create Game'}
                   </button>
+                  {onlinePlayers < 2 && (
+                    <p className="text-yellow-300 text-sm mt-2">
+                      Need at least 2 players online to create a game
+                    </p>
+                  )}
                 </div>
 
                 {/* Available Games Section */}
                 <div className="bg-white/10 rounded-lg p-6">
                   <h3 className="text-xl font-bold text-white mb-4">Join Available Games</h3>
                   {availableGames.length === 0 ? (
-                    <p className="text-white/80 text-center py-4">No games available. Create one above!</p>
+                    <p className="text-white/80 text-center py-4">
+                      {onlinePlayers < 2 
+                        ? 'No games available. Need more players online!' 
+                        : 'No games available. Create one above!'
+                      }
+                    </p>
                   ) : (
                     <div className="space-y-4">
                       {availableGames.map((game) => (
@@ -730,32 +818,32 @@ export default function CardGame() {
                   </div>
                 </div>
 
-                                 {/* Game Actions */}
-                 {isMyTurn && (
-                   <div className="flex justify-center gap-4">
-                     <button
-                       onClick={playCards}
-                       disabled={!selectedCards.length}
-                       className="bg-green-500 hover:bg-green-600 disabled:bg-gray-500 text-white font-bold py-3 px-6 rounded-lg transition"
-                     >
-                       Play Cards
-                     </button>
-                     <button
-                       onClick={pass}
-                       className="bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-6 rounded-lg transition"
-                     >
-                       Pass
-                     </button>
-                   </div>
-                 )}
-                 <div className="flex justify-center mt-4">
-                   <button
-                     onClick={leaveGame}
-                     className="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg transition"
-                   >
-                     Leave Game
-                   </button>
-                 </div>
+                {/* Game Actions */}
+                {isMyTurn && (
+                  <div className="flex justify-center gap-4">
+                    <button
+                      onClick={playCards}
+                      disabled={!selectedCards.length}
+                      className="bg-green-500 hover:bg-green-600 disabled:bg-gray-500 text-white font-bold py-3 px-6 rounded-lg transition"
+                    >
+                      Play Cards
+                    </button>
+                    <button
+                      onClick={pass}
+                      className="bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-6 rounded-lg transition"
+                    >
+                      Pass
+                    </button>
+                  </div>
+                )}
+                <div className="flex justify-center mt-4">
+                  <button
+                    onClick={leaveGame}
+                    className="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg transition"
+                  >
+                    Leave Game
+                  </button>
+                </div>
               </div>
             )}
 

@@ -32,6 +32,12 @@ const io = new Server(httpServer, {
 const activeGames = new Map()
 const connectedPlayers = new Map()
 
+// Function to broadcast online player count to all clients
+const broadcastOnlinePlayers = () => {
+  const count = connectedPlayers.size
+  io.emit('onlinePlayersUpdate', { count })
+}
+
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id)
   
@@ -40,7 +46,15 @@ io.on('connection', (socket) => {
   
   if (userId) {
     connectedPlayers.set(socket.id, { userId, displayName })
+    // Broadcast updated count to all clients
+    broadcastOnlinePlayers()
   }
+
+  // Handle getting online player count
+  socket.on('getOnlinePlayers', () => {
+    const count = connectedPlayers.size
+    socket.emit('onlinePlayersUpdate', { count })
+  })
 
   // Handle game creation
   socket.on('createGame', ({ gameId, betAmount }) => {
@@ -153,6 +167,9 @@ io.on('connection', (socket) => {
     // Remove from connected players
     connectedPlayers.delete(socket.id)
     
+    // Broadcast updated count to all clients
+    broadcastOnlinePlayers()
+    
     // Remove from active games and notify other players
     activeGames.forEach((game, gameId) => {
       if (game.players.has(socket.id)) {
@@ -181,4 +198,6 @@ io.on('connection', (socket) => {
 const PORT = process.env.PORT || 3001
 httpServer.listen(PORT, () => {
   console.log(`Socket.IO server running on port ${PORT}`)
+  console.log(`Server URL: ${process.env.RAILWAY_STATIC_URL || 'http://localhost:' + PORT}`)
+  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`)
 })

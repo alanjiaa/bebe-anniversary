@@ -18,7 +18,7 @@ const games = [
   },
   {
     id: 'cardgame',
-    name: 'Chinese Card Game',
+    name: 'Big 2',
     description: 'Multiplayer card game - get rid of all your cards!',
     image: '/images/shopping/coffee.jpg',
     minBet: 0.50,

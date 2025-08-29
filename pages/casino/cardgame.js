@@ -85,9 +85,10 @@ const isValidCombination = (cards) => {
   
   // Double
   if (cards.length === 2) {
+    // Both cards must be the same value, or one must be a joker (but not both jokers)
     return cards[0].value === cards[1].value || 
-           (cards[0].value === 'JOKER' && cards[1].value === 'JOKER') ||
-           (cards[0].value === 'JOKER' || cards[1].value === 'JOKER')
+           (cards[0].value === 'JOKER' && cards[1].value !== 'JOKER') ||
+           (cards[1].value === 'JOKER' && cards[0].value !== 'JOKER')
   }
   
   // Triplet
@@ -121,40 +122,177 @@ const getCombinationValue = (cards) => {
   const values = cards.map(card => card.value).filter(v => v !== 'JOKER')
   const jokers = cards.filter(card => card.value === 'JOKER').length
   
+  console.log(`getCombinationValue: cards=${cards.map(c => c.value)}, values=${values}, jokers=${jokers}`)
+  
   if (values.length === 0) {
     // All jokers - highest value
+    console.log('All jokers, returning 2')
     return '2'
   }
   
-  // For combinations with jokers, find the highest possible value
-  const baseValue = values[0]
-  const baseIndex = CARD_VALUES.indexOf(baseValue)
+  // For combinations with jokers, we need to determine the effective value
+  // For doubles: if we have one joker and one card, the joker becomes the same value as the card
+  // For triplets: if we have two jokers and one card, both jokers become that card's value
+  // For bombs: similar logic applies
   
-  // If we have jokers, we can potentially make this a higher value
-  // For simplicity, we'll use the base value and let the game logic handle joker substitution
-  return baseValue
+  if (cards.length === 2) {
+    // Double: if one is joker, the joker becomes the other card's value
+    if (jokers === 1 && values.length === 1) {
+      console.log('Double with joker, returning:', values[0])
+      return values[0]
+    }
+    // Both same value
+    if (values.length === 2 && values[0] === values[1]) {
+      console.log('Double with same values, returning:', values[0])
+      return values[0]
+    }
+  }
+  
+  if (cards.length === 3) {
+    // Triplet: if we have jokers, they become the same value as the non-joker cards
+    if (jokers === 2 && values.length === 1) {
+      console.log('Triplet with 2 jokers, returning:', values[0])
+      return values[0]
+    }
+    if (jokers === 1 && values.length === 2 && values[0] === values[1]) {
+      console.log('Triplet with 1 joker, returning:', values[0])
+      return values[0]
+    }
+    if (values.length === 3 && values[0] === values[1] && values[1] === values[2]) {
+      console.log('Triplet with 3 same values, returning:', values[0])
+      return values[0]
+    }
+  }
+  
+  if (cards.length === 4) {
+    // Bomb: similar logic for 4 of a kind
+    if (jokers === 3 && values.length === 1) {
+      console.log('Bomb with 3 jokers, returning:', values[0])
+      return values[0]
+    }
+    if (jokers === 2 && values.length === 2 && values[0] === values[1]) {
+      console.log('Bomb with 2 jokers, returning:', values[0])
+      return values[0]
+    }
+    if (jokers === 1 && values.length === 3 && values[0] === values[1] && values[1] === values[2]) {
+      console.log('Bomb with 1 joker, returning:', values[0])
+      return values[0]
+    }
+    if (values.length === 4 && values[0] === values[1] && values[1] === values[2] && values[2] === values[3]) {
+      console.log('Bomb with 4 same values, returning:', values[0])
+      return values[0]
+    }
+  }
+  
+  // For singles, just return the card value
+  if (cards.length === 1) {
+    const result = cards[0].value === 'JOKER' ? '2' : cards[0].value
+    console.log('Single card, returning:', result)
+    return result
+  }
+  
+  // Fallback: return the first non-joker value
+  const result = values[0] || '2'
+  console.log('Fallback, returning:', result)
+  return result
 }
 
 // Check if combination A can beat combination B
 const canBeat = (cardsA, cardsB) => {
-  if (!isValidCombination(cardsA) || !isValidCombination(cardsB)) return false
+  console.log(`canBeat called: ${cardsA.map(c => c.value)} vs ${cardsB.map(c => c.value)}`)
+  
+  if (!isValidCombination(cardsA) || !isValidCombination(cardsB)) {
+    console.log('Invalid combination detected')
+    return false
+  }
   
   // Bombs can beat anything
-  if (cardsA.length === 4 && cardsB.length !== 4) return true
-  if (cardsB.length === 4 && cardsA.length !== 4) return false
+  if (cardsA.length === 4 && cardsB.length !== 4) {
+    console.log('A is bomb, B is not - A wins')
+    return true
+  }
+  if (cardsB.length === 4 && cardsA.length !== 4) {
+    console.log('B is bomb, A is not - B wins')
+    return false
+  }
   
-  // Same length combinations
-  if (cardsA.length !== cardsB.length) return false
+  // Same length combinations only
+  if (cardsA.length !== cardsB.length) {
+    console.log('Different lengths, cannot beat')
+    return false
+  }
   
+  // Get the effective values for comparison
   const valueA = getCombinationValue(cardsA)
   const valueB = getCombinationValue(cardsB)
   
-  if (!valueA || !valueB) return false
+  console.log(`Effective values: A=${valueA}, B=${valueB}`)
+  
+  if (!valueA || !valueB) {
+    console.log('Invalid values detected')
+    return false
+  }
   
   const indexA = CARD_VALUES.indexOf(valueA)
   const indexB = CARD_VALUES.indexOf(valueB)
   
-  return indexA > indexB
+  console.log(`Card indices: A=${indexA} (${valueA}), B=${indexB} (${valueB})`)
+  
+  // Higher index means higher value (2 is highest, 3 is lowest)
+  const result = indexA > indexB
+  console.log(`Result: ${result}`)
+  return result
+}
+
+// CPU player names
+const CPU_NAMES = ['bobbybuoy', 'jerfeen', 'butter', 'sang', 'vivibot', 'alsiebot']
+
+// CPU Logic - Find valid combinations in hand
+const findValidCombinations = (hand) => {
+  const combinations = []
+  
+  // Single cards
+  hand.forEach(card => combinations.push([card]))
+  
+  // Doubles
+  for (let i = 0; i < hand.length - 1; i++) {
+    for (let j = i + 1; j < hand.length; j++) {
+      // Both cards must be the same value, or one must be a joker (but not both jokers)
+      if (hand[i].value === hand[j].value || 
+          (hand[i].value === 'JOKER' && hand[j].value !== 'JOKER') ||
+          (hand[j].value === 'JOKER' && hand[i].value !== 'JOKER')) {
+        combinations.push([hand[i], hand[j]])
+      }
+    }
+  }
+  
+  // Triplets
+  for (let i = 0; i < hand.length - 2; i++) {
+    for (let j = i + 1; j < hand.length - 1; j++) {
+      for (let k = j + 1; k < hand.length; k++) {
+        const cards = [hand[i], hand[j], hand[k]]
+        if (isValidCombination(cards)) {
+          combinations.push(cards)
+        }
+      }
+    }
+  }
+  
+  // Bombs (4 of a kind)
+  for (let i = 0; i < hand.length - 3; i++) {
+    for (let j = i + 1; j < hand.length - 2; j++) {
+      for (let k = j + 1; k < hand.length - 1; k++) {
+        for (let l = k + 1; l < hand.length; l++) {
+          const cards = [hand[i], hand[j], hand[k], hand[l]]
+          if (isValidCombination(cards)) {
+            combinations.push(cards)
+          }
+        }
+      }
+    }
+  }
+  
+  return combinations
 }
 
 export default function CardGame() {
@@ -177,6 +315,30 @@ export default function CardGame() {
   const [betDeducted, setBetDeducted] = useState(false)
   const [onlinePlayers, setOnlinePlayers] = useState(0)
   
+  // Practice mode state
+  const [isPracticeMode, setIsPracticeMode] = useState(false)
+  const [cpuPlayers, setCpuPlayers] = useState([])
+  const [cpuThinking, setCpuThinking] = useState(false)
+  
+     // New state for shuffling and dealing animations
+   const [isShuffling, setIsShuffling] = useState(false)
+   const [isDealing, setIsDealing] = useState(false)
+   const [dealtCards, setDealtCards] = useState([])
+   
+   // Debug useEffect to monitor state changes
+   useEffect(() => {
+     if (gameState === 'playing') {
+       console.log('=== STATE DEBUG ===')
+       console.log('Players:', players.map(p => ({ id: p.id, name: p.name, handLength: p.hand?.length || 0, isCpu: p.isCpu })))
+       console.log('My hand length:', myHand.length)
+       console.log('Current player:', currentPlayer)
+       console.log('Is my turn:', isMyTurn)
+       console.log('Last play:', lastPlay)
+       console.log('CPU thinking:', cpuThinking)
+       console.log('==================')
+     }
+   }, [players, myHand, currentPlayer, isMyTurn, lastPlay, cpuThinking, gameState])
+
   const user = auth.currentUser
 
   useEffect(() => {
@@ -189,18 +351,26 @@ export default function CardGame() {
     // Initialize socket connection
     const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 
       (process.env.NODE_ENV === 'production' 
-        ? window.location.origin.replace(/^https?:\/\//, 'https://').replace(/:\d+/, ':3001')
+        ? 'https://bebe-anniversary-production.up.railway.app'  // Railway deployment URL
         : 'http://localhost:3001')
+    
+    console.log('Connecting to Socket.IO server:', socketUrl)
     
     const newSocket = io(socketUrl, {
       auth: {
         userId: user.uid,
         displayName: user.displayName || user.email
-      }
+      },
+      transports: ['websocket', 'polling'] // Add fallback transport
     })
 
     newSocket.on('connect', () => {
       console.log('Connected to game server')
+    })
+
+    newSocket.on('connect_error', (error) => {
+      console.error('Socket connection error:', error)
+      toast.error('Failed to connect to game server')
     })
 
     newSocket.on('gameUpdate', (data) => {
@@ -217,6 +387,7 @@ export default function CardGame() {
 
     // Listen for online player count updates
     newSocket.on('onlinePlayersUpdate', (data) => {
+      console.log('Online players update:', data.count)
       setOnlinePlayers(data.count)
     })
 
@@ -290,6 +461,11 @@ export default function CardGame() {
         setIsMyTurn(myPlayer.id === data.currentPlayer)
       }
     }
+    
+    // Clear selected cards when game state changes
+    if (data.gameState === 'playing') {
+      setSelectedCards([])
+    }
   }
 
   const createGame = async () => {
@@ -306,35 +482,40 @@ export default function CardGame() {
       return
     }
     
-    const gameRef = doc(collection(db, 'cardGames'))
-    const gameData = {
-      id: gameRef.id,
-      players: [{
-        id: user.uid,
-        name: user.displayName || user.email,
-        hand: [],
-        ready: false
-      }],
-      gameState: 'waiting',
-      currentPlayer: null,
-      lastPlay: null,
-      betAmount,
-      createdAt: serverTimestamp(),
-      deck: [],
-      winner: null
+    try {
+      const gameRef = doc(collection(db, 'cardGames'))
+      const gameData = {
+        id: gameRef.id,
+        players: [{
+          id: user.uid,
+          name: user.displayName || user.email,
+          hand: [],
+          ready: false
+        }],
+        gameState: 'waiting',
+        currentPlayer: null,
+        lastPlay: null,
+        betAmount,
+        createdAt: serverTimestamp(),
+        deck: [],
+        winner: null
+      }
+      
+      await setDoc(gameRef, gameData)
+      setGameId(gameRef.id)
+      
+      // Don't deduct bet amount when creating - wait until game starts
+      // updatePounds(-betAmount)
+      
+      if (socket) {
+        socket.emit('createGame', { gameId: gameRef.id, betAmount })
+      }
+      
+      toast.success('Game created! Waiting for other players to join...')
+    } catch (error) {
+      console.error('Error creating game:', error)
+      toast.error('Failed to create game. Please try again.')
     }
-    
-    await setDoc(gameRef, gameData)
-    setGameId(gameRef.id)
-    
-    // Don't deduct bet amount when creating - wait until game starts
-    // updatePounds(-betAmount)
-    
-    if (socket) {
-      socket.emit('createGame', { gameId: gameRef.id, betAmount })
-    }
-    
-    toast.success('Game created! Waiting for other players to join...')
   }
 
   const joinGame = async (gameId) => {
@@ -567,6 +748,565 @@ export default function CardGame() {
     }
   }
 
+  const copyGameId = async () => {
+    if (gameId) {
+      try {
+        await navigator.clipboard.writeText(gameId)
+        toast.success('Game ID copied to clipboard!')
+      } catch (error) {
+        console.error('Failed to copy game ID:', error)
+        toast.error('Failed to copy game ID')
+      }
+    }
+  }
+
+  // Practice mode functions
+  const startPracticeGame = async (numCpuPlayers = 2) => {
+    if (!user) return
+    
+    setIsPracticeMode(true)
+    setGameState('waiting')
+    
+    // Create CPU players
+    const shuffledNames = [...CPU_NAMES].sort(() => Math.random() - 0.5)
+    const cpuPlayersList = []
+    
+         for (let i = 0; i < numCpuPlayers; i++) {
+       const cpuPlayer = {
+         id: `cpu-${i}`,
+         name: shuffledNames[i],
+         hand: [],
+         ready: true,
+         isCpu: true
+       }
+       console.log('Created CPU player:', cpuPlayer)
+       cpuPlayersList.push(cpuPlayer)
+     }
+    
+    setCpuPlayers(cpuPlayersList)
+    
+    // Create player list with user and CPU players
+    const allPlayers = [
+      {
+        id: user.uid,
+        name: user.displayName || user.email,
+        hand: [],
+        ready: false
+      },
+      ...cpuPlayersList
+    ]
+    
+    setPlayers(allPlayers)
+    
+    // Don't auto-start - wait for user to click "Ready to Play"
+  }
+
+     const startPracticeGameLogic = async (allPlayers) => {
+     const numPlayers = allPlayers.length
+     const numDecks = numPlayers <= 2 ? 1 : 2
+     const deck = shuffleDeck(createDeck(numDecks))
+     const hands = dealCards(deck, numPlayers)
+     
+     console.log('Starting practice game with', numPlayers, 'players')
+     console.log('Deck size:', deck.length)
+     console.log('Hands:', hands.map(h => h.length))
+     console.log('Hands content:', hands)
+     
+           // Create updated players with hands
+      const updatedPlayers = allPlayers.map((player, index) => ({
+        ...player,
+        hand: hands[index] || [],
+        isCpu: player.isCpu || false // Ensure isCpu flag is preserved
+      }))
+     
+           console.log('Updated players with hands:', updatedPlayers)
+      console.log('CPU players in updated list:', updatedPlayers.filter(p => p.isCpu))
+     
+     // Start animation
+     setIsShuffling(true)
+     setDealtCards([])
+     
+     // Shuffling animation
+     console.log('Shuffling animation started')
+     await new Promise(resolve => setTimeout(resolve, 2000))
+     setIsShuffling(false)
+     setIsDealing(true)
+     
+     // Deal cards one by one with animation
+     const totalCards = deck.length
+     const cardsPerPlayer = Math.floor(totalCards / numPlayers)
+     
+     console.log('Dealing animation started, cards per player:', cardsPerPlayer)
+     
+     for (let round = 0; round < cardsPerPlayer; round++) {
+       for (let playerIndex = 0; playerIndex < numPlayers; playerIndex++) {
+         const cardIndex = round * numPlayers + playerIndex
+         if (cardIndex < totalCards) {
+           const card = deck[cardIndex]
+           setDealtCards(prev => [...prev, { card, playerIndex, round }])
+           await new Promise(resolve => setTimeout(resolve, 100))
+         }
+       }
+     }
+     
+     // Wait a moment then set the actual hands
+     await new Promise(resolve => setTimeout(resolve, 500))
+     setIsDealing(false)
+     setDealtCards([])
+     
+     console.log('Animation completed')
+     
+     const firstPlayer = updatedPlayers[Math.floor(Math.random() * numPlayers)]
+     
+     console.log('First player:', firstPlayer.name, 'isCpu:', firstPlayer.isCpu)
+     console.log('My hand should be:', updatedPlayers.find(p => p.id === user.uid)?.hand)
+     
+     // Set all states at once to prevent race conditions
+     setPlayers(updatedPlayers)
+     setGameState('playing')
+     setCurrentPlayer(firstPlayer.id)
+     setIsMyTurn(firstPlayer.id === user.uid)
+     
+     // Always set my hand regardless of who goes first
+     const myPlayer = updatedPlayers.find(p => p.id === user.uid)
+     setMyHand(myPlayer ? myPlayer.hand : [])
+     
+     console.log('Set my hand to:', myPlayer ? myPlayer.hand : [])
+     console.log('First player is CPU:', firstPlayer.isCpu)
+     
+     // If CPU goes first, make their move
+     if (firstPlayer.isCpu) {
+       console.log('CPU goes first, starting CPU turn')
+       // Use the updatedPlayers data directly instead of relying on state
+       setTimeout(() => {
+         handleCpuTurn(firstPlayer, updatedPlayers, null)
+       }, 1000)
+     } else {
+       console.log('User goes first')
+     }
+   }
+
+    const handleCpuTurn = async (cpuPlayer, playersData = null, lastPlayData = null) => {
+    if (!isPracticeMode || !cpuPlayer.isCpu) return
+    
+    // Prevent multiple CPU turns from running simultaneously
+    if (cpuThinking) {
+      console.log('CPU already thinking, skipping turn')
+      return
+    }
+    
+    console.log('=== CPU TURN START ===')
+    console.log('CPU turn started for:', cpuPlayer.name)
+    console.log('Current player should be:', currentPlayer)
+    console.log('Is my turn:', isMyTurn)
+    
+    setCpuThinking(true)
+    
+    // Simulate thinking time
+    await new Promise(resolve => setTimeout(resolve, 1500))
+    
+    // Get the current CPU player data from the passed data or players state
+    const playersToUse = playersData || players
+    const currentCpuPlayer = playersToUse.find(p => p.id === cpuPlayer.id)
+    if (!currentCpuPlayer) {
+      console.error('CPU player not found in players state')
+      setCpuThinking(false)
+      return
+    }
+    
+    const cpuHand = currentCpuPlayer.hand
+    console.log('CPU hand:', cpuHand.map(c => c.value))
+    console.log('Last play:', lastPlayData?.cards?.map(c => c.value))
+    
+    // Determine what to play
+    let bestPlay = null
+    
+    if (!lastPlayData) {
+      // First play of the game - play lowest single card
+      console.log('CPU making first play')
+      const singles = cpuHand.filter(card => card.value !== 'JOKER')
+      if (singles.length > 0) {
+        // Find lowest non-joker card
+        bestPlay = [singles.reduce((lowest, current) => {
+          const lowestIndex = CARD_VALUES.indexOf(lowest.value)
+          const currentIndex = CARD_VALUES.indexOf(current.value)
+          return currentIndex < lowestIndex ? current : lowest
+        })]
+      } else {
+        // Only jokers available, play the first one
+        bestPlay = [cpuHand[0]]
+      }
+    } else {
+      // Responding to a play - find valid play that beats last play
+      console.log('CPU responding to last play:', lastPlayData.cards.map(c => c.value))
+      
+      // Find all valid combinations in hand
+      const combinations = []
+      
+      // Singles
+      cpuHand.forEach(card => combinations.push([card]))
+      
+      // Doubles
+      for (let i = 0; i < cpuHand.length - 1; i++) {
+        for (let j = i + 1; j < cpuHand.length; j++) {
+          if (cpuHand[i].value === cpuHand[j].value || 
+              (cpuHand[i].value === 'JOKER' && cpuHand[j].value !== 'JOKER') ||
+              (cpuHand[j].value === 'JOKER' && cpuHand[i].value !== 'JOKER')) {
+            combinations.push([cpuHand[i], cpuHand[j]])
+          }
+        }
+      }
+      
+      // Triplets
+      for (let i = 0; i < cpuHand.length - 2; i++) {
+        for (let j = i + 1; j < cpuHand.length - 1; j++) {
+          for (let k = j + 1; k < cpuHand.length; k++) {
+            const cards = [cpuHand[i], cpuHand[j], cpuHand[k]]
+            if (isValidCombination(cards)) {
+              combinations.push(cards)
+            }
+          }
+        }
+      }
+      
+      // Bombs
+      for (let i = 0; i < cpuHand.length - 3; i++) {
+        for (let j = i + 1; j < cpuHand.length - 2; j++) {
+          for (let k = j + 1; k < cpuHand.length - 1; k++) {
+            for (let l = k + 1; l < cpuHand.length; l++) {
+              const cards = [cpuHand[i], cpuHand[j], cpuHand[k], cpuHand[l]]
+              if (isValidCombination(cards)) {
+                combinations.push(cards)
+              }
+            }
+          }
+        }
+      }
+      
+      console.log('All combinations found:', combinations.map(combo => combo.map(c => c.value)))
+      
+      // Find combinations that can beat the last play
+      const validPlays = combinations.filter(combo => {
+        if (!lastPlayData) return true
+        const canBeatResult = canBeat(combo, lastPlayData.cards)
+        console.log(`Checking if ${combo.map(c => c.value)} can beat ${lastPlayData.cards.map(c => c.value)}: ${canBeatResult}`)
+        return canBeatResult
+      })
+      
+      console.log('Valid plays that can beat last play:', validPlays.map(combo => combo.map(c => c.value)))
+      
+      if (validPlays.length > 0) {
+        // Choose the lowest valid play of the same type as last play
+        const targetLength = lastPlayData.cards.length
+        const targetPlays = validPlays.filter(combo => combo.length === targetLength)
+        
+        console.log(`Target length: ${targetLength}, Target plays:`, targetPlays.map(combo => combo.map(c => c.value)))
+        
+        if (targetPlays.length > 0) {
+          // Choose lowest play of same type
+          bestPlay = targetPlays.reduce((lowest, current) => {
+            const lowestValue = getCombinationValue(lowest)
+            const currentValue = getCombinationValue(current)
+            const lowestIndex = CARD_VALUES.indexOf(lowestValue)
+            const currentIndex = CARD_VALUES.indexOf(currentValue)
+            console.log(`Comparing ${current.map(c => c.value)} (${currentValue}, index ${currentIndex}) vs ${lowest.map(c => c.value)} (${lowestValue}, index ${lowestIndex})`)
+            return currentIndex < lowestIndex ? current : lowest
+          })
+          console.log('Selected best play of same type:', bestPlay.map(c => c.value))
+        } else {
+          // Use a bomb if available
+          const bombs = validPlays.filter(combo => combo.length === 4)
+          console.log('No same-type plays, checking bombs:', bombs.map(combo => combo.map(c => c.value)))
+          if (bombs.length > 0) {
+            bestPlay = bombs[0]
+            console.log('Selected bomb:', bestPlay.map(c => c.value))
+          }
+        }
+      } else {
+        console.log('No valid plays found, CPU will pass')
+      }
+    }
+    
+    if (bestPlay) {
+      // CPU plays cards
+      console.log('CPU playing:', bestPlay.map(c => c.value))
+      
+      const updatedHand = cpuHand.filter(card => 
+        !bestPlay.some(playedCard => playedCard.id === card.id)
+      )
+      
+      console.log('CPU cards removed:', bestPlay.map(c => c.value))
+      console.log('CPU original hand length:', cpuHand.length)
+      console.log('CPU updated hand length:', updatedHand.length)
+      
+      const newLastPlay = {
+        playerId: cpuPlayer.id,
+        playerName: cpuPlayer.name,
+        cards: bestPlay,
+        timestamp: new Date()
+      }
+      
+      // Update players with new hand
+      const updatedPlayers = playersToUse.map(player => {
+        if (player.id === cpuPlayer.id) {
+          return { ...player, hand: updatedHand }
+        }
+        return player
+      })
+      
+      // Find next player
+      const currentPlayerIndex = playersToUse.findIndex(p => p.id === cpuPlayer.id)
+      const nextPlayerIndex = (currentPlayerIndex + 1) % playersToUse.length
+      const nextPlayer = playersToUse[nextPlayerIndex]
+      
+      console.log('Next player:', nextPlayer.name, 'isCpu:', nextPlayer.isCpu)
+      
+      // Clear selected cards first to prevent visual issues
+      setSelectedCards([])
+      
+      // Update all states at once
+      setPlayers(updatedPlayers)
+      setLastPlay(newLastPlay)
+      setCurrentPlayer(nextPlayer.id)
+      setIsMyTurn(nextPlayer.id === user.uid)
+      setCpuThinking(false)
+      
+      // Always show my hand if I'm the user
+      const myPlayer = updatedPlayers.find(p => p.id === user.uid)
+      setMyHand(myPlayer ? myPlayer.hand : [])
+      
+      // Force a re-render to ensure state is updated
+      setTimeout(() => {
+        console.log('CPU state update verification - CPU hand after update:', updatedHand.map(c => c.value))
+      }, 0)
+      
+      // Check for winner
+      if (updatedHand.length === 0) {
+        setGameState('finished')
+        setWinner(cpuPlayer.id)
+        toast.success(`${cpuPlayer.name} won the game!`)
+        return
+      }
+      
+      // If next player is CPU, continue the turn
+      if (nextPlayer.isCpu) {
+        console.log('Next player is CPU, continuing turn chain')
+        setTimeout(() => {
+          handleCpuTurn(nextPlayer, updatedPlayers, newLastPlay)
+        }, 1000)
+      } else {
+        console.log('Turn passed to user after CPU play')
+        setIsMyTurn(true)
+      }
+    } else {
+      // CPU passes
+      console.log('CPU passing')
+      
+      const currentPlayerIndex = playersToUse.findIndex(p => p.id === cpuPlayer.id)
+      const nextPlayerIndex = (currentPlayerIndex + 1) % playersToUse.length
+      const nextPlayer = playersToUse[nextPlayerIndex]
+      
+      console.log('Next player after pass:', nextPlayer.name, 'isCpu:', nextPlayer.isCpu)
+      
+             // Update all states at once - RESET lastPlay when CPU passes
+       setCurrentPlayer(nextPlayer.id)
+       setIsMyTurn(nextPlayer.id === user.uid)
+       setCpuThinking(false)
+       setLastPlay(null) // Reset lastPlay so next player can play anything
+       
+       // Update players state to ensure consistency
+       setPlayers(playersToUse)
+       
+       // Always show my hand if I'm the user
+       const myPlayer = playersToUse.find(p => p.id === user.uid)
+       console.log('CPU pass - My hand before update:', myPlayer ? myPlayer.hand.map(c => c.value) : [])
+       setMyHand(myPlayer ? myPlayer.hand : [])
+       
+       // Force a re-render to ensure state is updated
+       setTimeout(() => {
+         console.log('CPU pass - State update verification - My hand after update:', myPlayer ? myPlayer.hand.map(c => c.value) : [])
+       }, 0)
+      
+      toast(`${cpuPlayer.name} passed`)
+      
+             // If next player is CPU, continue the turn
+       if (nextPlayer.isCpu) {
+         console.log('Next player is CPU, continuing turn chain after pass')
+         setTimeout(() => {
+           // Use the updated players data to ensure consistency
+           const updatedPlayersForNextTurn = playersToUse.map(player => {
+             if (player.id === user.uid) {
+               return { ...player, hand: myPlayer ? myPlayer.hand : [] }
+             }
+             return player
+           })
+           handleCpuTurn(nextPlayer, updatedPlayersForNextTurn, null) // Pass null as lastPlay since it's reset
+         }, 1000)
+       }
+    }
+    
+    console.log('=== CPU TURN END ===')
+  }
+
+     const playCardsPractice = async () => {
+     if (!isMyTurn || !selectedCards.length || !isPracticeMode) return
+     
+     console.log('=== USER PLAY START ===')
+     console.log('User playing cards:', selectedCards.map(c => c.value))
+     console.log('Last play:', lastPlay?.cards?.map(c => c.value))
+     console.log('Current player:', currentPlayer)
+     console.log('Is my turn:', isMyTurn)
+     
+     if (!isValidCombination(selectedCards)) {
+       toast.error('Invalid card combination')
+       return
+     }
+     
+     if (lastPlay && !canBeat(selectedCards, lastPlay.cards)) {
+       toast.error('Your cards must beat the previous play')
+       return
+     }
+     
+     // Remove played cards from hand
+     const updatedHand = myHand.filter(card => 
+       !selectedCards.some(selected => selected.id === card.id)
+     )
+     
+     console.log('User updated hand:', updatedHand.map(c => c.value))
+     console.log('Cards removed:', selectedCards.map(c => c.value))
+     console.log('Original hand length:', myHand.length)
+     console.log('Updated hand length:', updatedHand.length)
+     
+     // Update players array with my new hand
+     const updatedPlayers = players.map(player => 
+       player.id === user.uid ? { ...player, hand: updatedHand } : player
+     )
+     
+     // Find next player
+     const currentPlayerIndex = players.findIndex(p => p.id === currentPlayer)
+     const nextPlayerIndex = (currentPlayerIndex + 1) % players.length
+     const nextPlayer = players[nextPlayerIndex]
+     
+     console.log('Next player:', nextPlayer.name, 'isCpu:', nextPlayer.isCpu)
+     
+     const newLastPlay = {
+       playerId: user.uid,
+       playerName: user.displayName || user.email,
+       cards: selectedCards,
+       timestamp: new Date()
+     }
+     
+     // Clear selected cards first to prevent visual issues
+     setSelectedCards([])
+     
+     // Update all states at once to prevent race conditions
+     setPlayers(updatedPlayers)
+     setLastPlay(newLastPlay)
+     setCurrentPlayer(nextPlayer.id)
+     setIsMyTurn(false)
+     setMyHand(updatedHand)
+     
+     // Force a re-render to ensure state is updated
+     setTimeout(() => {
+       console.log('State update verification - My hand after update:', updatedHand.map(c => c.value))
+     }, 0)
+     
+     console.log('States updated - lastPlay set to:', newLastPlay.cards.map(c => c.value))
+     console.log('Turn passed to:', nextPlayer.name)
+     
+     // Check for winner
+     if (updatedHand.length === 0) {
+       setGameState('finished')
+       setWinner(user.uid)
+       toast.success('Congratulations! You won!')
+       return
+     }
+     
+           // If next player is CPU, handle their turn
+      if (nextPlayer.isCpu) {
+        console.log('Next player is CPU, starting CPU turn')
+        setTimeout(() => {
+          handleCpuTurn(nextPlayer, updatedPlayers, newLastPlay)
+        }, 1000)
+      } else {
+       console.log('Next player is user, setting turn')
+       setIsMyTurn(true)
+     }
+     
+     console.log('=== USER PLAY END ===')
+   }
+
+     const passPractice = async () => {
+     if (!isMyTurn || !isPracticeMode) return
+     
+     console.log('=== USER PASS START ===')
+     console.log('User passing')
+     console.log('Current player:', currentPlayer)
+     console.log('Is my turn:', isMyTurn)
+     
+     // Find next player
+     const currentPlayerIndex = players.findIndex(p => p.id === currentPlayer)
+     const nextPlayerIndex = (currentPlayerIndex + 1) % players.length
+     const nextPlayer = players[nextPlayerIndex]
+     
+     console.log('Next player:', nextPlayer.name, 'isCpu:', nextPlayer.isCpu)
+     
+     setCurrentPlayer(nextPlayer.id)
+     setIsMyTurn(false)
+     setLastPlay(null) // Reset lastPlay when user passes
+     
+     toast('You passed')
+     
+     // If next player is CPU, handle their turn
+     if (nextPlayer.isCpu) {
+       console.log('Next player is CPU, starting CPU turn after pass')
+               setTimeout(() => {
+          handleCpuTurn(nextPlayer, players, null) // Pass null as lastPlay since it's reset
+        }, 1000)
+     } else {
+       console.log('Next player is user, setting turn after pass')
+       setIsMyTurn(true)
+       // Make sure my hand is still visible
+       const myPlayer = players.find(p => p.id === user.uid)
+       console.log('User pass - My hand before update:', myPlayer ? myPlayer.hand.map(c => c.value) : [])
+       setMyHand(myPlayer ? myPlayer.hand : [])
+     }
+     
+     console.log('=== USER PASS END ===')
+   }
+
+  const readyToPlayPractice = async () => {
+    if (!isPracticeMode) return
+    
+    // Mark user as ready
+    const updatedPlayers = players.map(player => 
+      player.id === user.uid ? { ...player, ready: true } : player
+    )
+    setPlayers(updatedPlayers)
+    
+    // Start the practice game immediately
+    await startPracticeGameLogic(updatedPlayers)
+  }
+
+  const leavePracticeGame = () => {
+    setIsPracticeMode(false)
+    setGameState('lobby')
+    setPlayers([])
+    setCpuPlayers([])
+    setMyHand([])
+    setSelectedCards([])
+    setLastPlay(null)
+    setIsMyTurn(false)
+    setWinner(null)
+    setCurrentPlayer(null)
+    setCpuThinking(false)
+    setGameId(null)
+    
+    toast.success('Left practice game')
+  }
+
+
+
   const getCardColor = (suit) => {
     return suit === '♥' || suit === '♦' ? 'text-red-600' : 'text-black'
   }
@@ -610,7 +1350,7 @@ export default function CardGame() {
             className="text-center mb-8"
           >
             <h1 className="text-5xl font-script text-yellow-400 mb-4 drop-shadow-lg">
-              🃏 Chinese Card Game 🃏
+              🃏 Big 2 🃏
             </h1>
             <p className="text-white text-lg mb-6">
               Get rid of all your cards to win!
@@ -640,60 +1380,91 @@ export default function CardGame() {
 
           {/* Game Content */}
           <div className="bg-white/10 backdrop-blur-sm rounded-xl p-8">
-            {gameState === 'lobby' && (
-              <div>
-                <h2 className="text-2xl font-bold text-white mb-6 text-center">Game Lobby</h2>
-                
-                {/* Player Count Warning */}
-                {onlinePlayers < 2 && (
-                  <div className="bg-yellow-500/20 border border-yellow-500/50 rounded-lg p-4 mb-6">
-                    <div className="flex items-center gap-2 text-yellow-300">
-                      <FaUsers className="text-xl" />
-                      <span className="font-semibold">Not enough players online</span>
-                    </div>
-                    <p className="text-yellow-200 text-sm mt-1">
-                      You need at least 2 players online to create or join a game. 
-                      Currently only {onlinePlayers} player{onlinePlayers !== 1 ? 's' : ''} online.
-                    </p>
-                    <p className="text-yellow-200 text-sm mt-2">
-                      💡 <strong>Testing tip:</strong> Open this page in another browser tab/window to test multiplayer!
-                    </p>
-                  </div>
-                )}
-                
-                {/* Create Game Section */}
-                <div className="bg-white/10 rounded-lg p-6 mb-6">
-                  <h3 className="text-xl font-bold text-white mb-4">Create New Game</h3>
-                  <div className="flex items-center gap-4 mb-4">
-                    <label className="text-white">Bet Amount (£):</label>
-                    <input
-                      type="number"
-                      min="0.50"
-                      max="100"
-                      step="0.50"
-                      value={betAmount}
-                      onChange={(e) => setBetAmount(parseFloat(e.target.value))}
-                      className="w-32 px-4 py-2 rounded-lg text-center"
-                    />
-                  </div>
-                  <button
-                    onClick={createGame}
-                    disabled={onlinePlayers < 2}
-                    className={`font-bold py-3 px-6 rounded-lg transition ${
-                      onlinePlayers < 2 
-                        ? 'bg-gray-500 cursor-not-allowed text-gray-300' 
-                        : 'bg-green-500 hover:bg-green-600 text-white'
-                    }`}
-                  >
-                    <FaPlay className="inline mr-2" />
-                    {onlinePlayers < 2 ? 'Need More Players' : 'Create Game'}
-                  </button>
-                  {onlinePlayers < 2 && (
-                    <p className="text-yellow-300 text-sm mt-2">
-                      Need at least 2 players online to create a game
-                    </p>
-                  )}
-                </div>
+                         {gameState === 'lobby' && (
+               <div>
+                 <h2 className="text-2xl font-bold text-white mb-6 text-center">Game Lobby</h2>
+                 
+                 {/* Practice Mode Section */}
+                 <div className="bg-blue-500/20 border border-blue-500/50 rounded-lg p-6 mb-6">
+                   <h3 className="text-xl font-bold text-white mb-4">🎯 Practice Mode (vs CPU)</h3>
+                   <p className="text-blue-200 text-sm mb-4">
+                     Learn the game mechanics by playing against computer opponents. No betting required!
+                   </p>
+                   <div className="flex gap-4">
+                     <button
+                       onClick={() => startPracticeGame(1)}
+                       className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-6 rounded-lg transition"
+                     >
+                       <FaPlay className="inline mr-2" />
+                       vs 1 CPU
+                     </button>
+                     <button
+                       onClick={() => startPracticeGame(2)}
+                       className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-6 rounded-lg transition"
+                     >
+                       <FaPlay className="inline mr-2" />
+                       vs 2 CPUs
+                     </button>
+                     <button
+                       onClick={() => startPracticeGame(3)}
+                       className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-6 rounded-lg transition"
+                     >
+                       <FaPlay className="inline mr-2" />
+                       vs 3 CPUs
+                     </button>
+                   </div>
+                 </div>
+                 
+                 {/* Player Count Warning */}
+                 {onlinePlayers < 2 && (
+                   <div className="bg-yellow-500/20 border border-yellow-500/50 rounded-lg p-4 mb-6">
+                     <div className="flex items-center gap-2 text-yellow-300">
+                       <FaUsers className="text-xl" />
+                       <span className="font-semibold">Not enough players online</span>
+                     </div>
+                     <p className="text-yellow-200 text-sm mt-1">
+                       You need at least 2 players online to create or join a game. 
+                       Currently only {onlinePlayers} player{onlinePlayers !== 1 ? 's' : ''} online.
+                     </p>
+                     <p className="text-yellow-200 text-sm mt-2">
+                       💡 <strong>Testing tip:</strong> Open this page in another browser tab/window to test multiplayer!
+                     </p>
+                   </div>
+                 )}
+                 
+                 {/* Create Game Section */}
+                 <div className="bg-white/10 rounded-lg p-6 mb-6">
+                   <h3 className="text-xl font-bold text-white mb-4">Create New Game</h3>
+                   <div className="flex items-center gap-4 mb-4">
+                     <label className="text-white">Bet Amount (£):</label>
+                     <input
+                       type="number"
+                       min="0.50"
+                       max="100"
+                       step="0.50"
+                       value={betAmount}
+                       onChange={(e) => setBetAmount(parseFloat(e.target.value))}
+                       className="w-32 px-4 py-2 rounded-lg text-center"
+                     />
+                   </div>
+                   <button
+                     onClick={createGame}
+                     disabled={onlinePlayers < 2}
+                     className={`font-bold py-3 px-6 rounded-lg transition ${
+                       onlinePlayers < 2 
+                         ? 'bg-gray-500 cursor-not-allowed text-gray-300' 
+                         : 'bg-green-500 hover:bg-green-600 text-white'
+                     }`}
+                   >
+                     <FaPlay className="inline mr-2" />
+                     {onlinePlayers < 2 ? 'Need More Players' : 'Create Game'}
+                   </button>
+                   {onlinePlayers < 2 && (
+                     <p className="text-yellow-300 text-sm mt-2">
+                       Need at least 2 players online to create a game
+                     </p>
+                   )}
+                 </div>
 
                 {/* Available Games Section */}
                 <div className="bg-white/10 rounded-lg p-6">
@@ -749,127 +1520,374 @@ export default function CardGame() {
               </div>
             )}
 
-            {gameState === 'waiting' && (
-              <div className="text-center">
-                <h2 className="text-2xl font-bold text-white mb-6">Waiting for Players</h2>
-                <div className="mb-6">
-                  <p className="text-white mb-4">Game ID: {gameId}</p>
-                  <p className="text-white mb-4">Players ({players.length}/4):</p>
-                  <div className="flex justify-center gap-4 mb-6">
-                    {players.map((player, index) => (
-                      <div key={player.id} className="bg-white/20 rounded-lg p-4">
-                        <div className="flex items-center gap-2">
-                          <FaUsers className="text-yellow-400" />
-                          <span className="text-white">{player.name}</span>
-                          {player.ready && <FaCheck className="text-green-400" />}
+                         {gameState === 'waiting' && (
+               <div className="text-center">
+                 <h2 className="text-2xl font-bold text-white mb-6">
+                   {isPracticeMode ? 'Practice Game Setup' : 'Waiting for Players'}
+                 </h2>
+                 
+                 {/* Game Info */}
+                 <div className="bg-white/10 rounded-lg p-6 mb-6">
+                   {!isPracticeMode && (
+                     <>
+                       <div className="flex items-center justify-center gap-2 mb-4">
+                         <p className="text-white">Game ID: <span className="font-mono bg-white/20 px-2 py-1 rounded">{gameId}</span></p>
+                         <button
+                           onClick={copyGameId}
+                           className="bg-blue-500 hover:bg-blue-600 text-white text-xs px-2 py-1 rounded"
+                         >
+                           Copy
+                         </button>
+                       </div>
+                       <p className="text-white mb-4">Bet Amount: £{betAmount}</p>
+                     </>
+                   )}
+                   <p className="text-white mb-4">Players ({players.length}/4):</p>
+                   
+                   {/* Player List */}
+                   <div className="flex justify-center gap-4 mb-6">
+                     {players.map((player, index) => (
+                       <div key={player.id} className="bg-white/20 rounded-lg p-4 min-w-[150px]">
+                         <div className="flex items-center gap-2">
+                           <FaUsers className="text-yellow-400" />
+                           <span className="text-white text-sm">{player.name}</span>
+                           {player.ready && <FaCheck className="text-green-400" />}
+                         </div>
+                         <div className="text-xs text-white/70 mt-1">
+                           {player.ready ? 'Ready' : 'Not Ready'}
+                         </div>
+                       </div>
+                     ))}
+                   </div>
+                   
+                   {/* Waiting Status - Only show for non-practice mode */}
+                   {!isPracticeMode && (
+                     <div className="bg-yellow-500/20 border border-yellow-500/50 rounded-lg p-4 mb-4">
+                       <div className="flex items-center gap-2 text-yellow-300">
+                         <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-yellow-300"></div>
+                         <span className="font-semibold">Waiting for more players...</span>
+                       </div>
+                       <p className="text-yellow-200 text-sm mt-1">
+                         Need at least 2 players to start. Share the Game ID with friends!
+                       </p>
+                     </div>
+                   )}
+                 </div>
+                
+                                 {/* Ready Button */}
+                 {players.find(p => p.id === user.uid)?.ready ? (
+                   <div className="bg-green-500/20 border border-green-500/50 rounded-lg p-4 mb-4">
+                     <div className="flex items-center gap-2 text-green-300">
+                       <FaCheck className="text-green-400" />
+                       <span className="font-semibold">You're ready to play!</span>
+                     </div>
+                     <p className="text-green-200 text-sm mt-1">
+                       {isPracticeMode ? 'Starting practice game...' : 'Waiting for other players to get ready...'}
+                     </p>
+                   </div>
+                 ) : (
+                   <button
+                     onClick={isPracticeMode ? readyToPlayPractice : readyToPlay}
+                     className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-6 rounded-lg transition mb-4"
+                   >
+                     Ready to Play
+                   </button>
+                 )}
+                
+                                 {/* Action Buttons */}
+                 <div className="space-y-2">
+                   <button
+                     onClick={isPracticeMode ? leavePracticeGame : leaveGame}
+                     className="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg transition"
+                   >
+                     {isPracticeMode ? 'Leave Practice Game' : 'Leave Game'}
+                   </button>
+                 </div>
+              </div>
+            )}
+
+                         {gameState === 'playing' && (
+               <div>
+                 <div className="mb-6">
+                   <h2 className="text-2xl font-bold text-white mb-4">
+                     {isPracticeMode ? 'Practice Game' : 'Game in Progress'}
+                   </h2>
+                   <div className="flex justify-between items-center mb-4">
+                     <div className="text-white">
+                       Current Player: {players.find(p => p.id === currentPlayer)?.name}
+                       {players.find(p => p.id === currentPlayer)?.isCpu && ' 🤖'}
+                     </div>
+                     <div className="text-white">
+                       {isMyTurn && <span className="text-green-400 font-bold">Your turn!</span>}
+                       {!isMyTurn && players.find(p => p.id === currentPlayer)?.isCpu && (
+                         <span className="text-blue-400 font-bold">
+                           {cpuThinking ? '🤖 CPU is thinking...' : '🤖 CPU turn'}
+                         </span>
+                       )}
+                     </div>
+                   </div>
+                 </div>
+
+                                   {/* Shuffling Animation */}
+                  {isShuffling && (
+                    <div className="mb-8">
+                      <div className="bg-green-800/50 rounded-xl p-8 border-2 border-green-600/30">
+                        <div className="text-center">
+                          <div className="text-6xl mb-4 animate-bounce">🃏</div>
+                          <h3 className="text-white text-xl font-semibold mb-2">Shuffling Cards...</h3>
+                          <div className="flex justify-center gap-2">
+                            {[...Array(5)].map((_, i) => (
+                              <motion.div
+                                key={i}
+                                animate={{ 
+                                  rotate: [0, 360],
+                                  scale: [1, 1.2, 1]
+                                }}
+                                transition={{ 
+                                  duration: 1,
+                                  repeat: Infinity,
+                                  delay: i * 0.1
+                                }}
+                                className="w-12 h-16 bg-white rounded-lg shadow-lg border-2 border-gray-300"
+                              >
+                                <div className="w-full h-full bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+                                  <span className="text-white text-xs">♠</span>
+                                </div>
+                              </motion.div>
+                            ))}
+                          </div>
                         </div>
                       </div>
-                    ))}
-                  </div>
-                </div>
-                {players.find(p => p.id === user.uid)?.ready ? (
-                  <p className="text-green-400">Ready to play!</p>
-                ) : (
-                  <button
-                    onClick={readyToPlay}
-                    className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-6 rounded-lg transition"
-                  >
-                    Ready to Play
-                  </button>
-                )}
-                <button
-                  onClick={leaveGame}
-                  className="mt-4 bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg transition"
-                >
-                  Leave Game
-                </button>
-              </div>
-            )}
-
-            {gameState === 'playing' && (
-              <div>
-                <div className="mb-6">
-                  <h2 className="text-2xl font-bold text-white mb-4">Game in Progress</h2>
-                  <div className="flex justify-between items-center mb-4">
-                    <div className="text-white">
-                      Current Player: {players.find(p => p.id === currentPlayer)?.name}
                     </div>
-                    <div className="text-white">
-                      {isMyTurn && <span className="text-green-400 font-bold">Your turn!</span>}
+                  )}
+
+                  {/* Dealing Animation */}
+                  {isDealing && (
+                    <div className="mb-8">
+                      <div className="bg-green-800/50 rounded-xl p-8 border-2 border-green-600/30">
+                        <div className="text-center">
+                          <h3 className="text-white text-xl font-semibold mb-4">Dealing Cards...</h3>
+                          <div className="flex justify-center items-center min-h-[120px]">
+                            <div className="flex gap-2">
+                              {dealtCards.map(({ card, playerIndex, round }, index) => (
+                                <motion.div
+                                  key={`${card.id}-${index}`}
+                                  initial={{ 
+                                    x: 0, 
+                                    y: 0, 
+                                    scale: 0,
+                                    rotate: -180
+                                  }}
+                                  animate={{ 
+                                    x: (playerIndex - 1) * 100,
+                                    y: playerIndex === 0 ? -50 : 50,
+                                    scale: 1,
+                                    rotate: 0
+                                  }}
+                                  transition={{ 
+                                    duration: 0.5,
+                                    delay: index * 0.1,
+                                    type: "spring"
+                                  }}
+                                  className="relative w-16 h-24 bg-white rounded-lg shadow-lg border-2 border-gray-300"
+                                >
+                                  <div className={`absolute top-1 left-1 text-sm font-bold ${getCardColor(card.suit)}`}>
+                                    {card.value}
+                                  </div>
+                                  <div className={`absolute bottom-1 right-1 text-sm font-bold ${getCardColor(card.suit)}`}>
+                                    {card.suit}
+                                  </div>
+                                  {card.value === 'JOKER' && (
+                                    <div className="absolute inset-0 flex items-center justify-center text-2xl">
+                                      🃏
+                                    </div>
+                                  )}
+                                </motion.div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
+                  )}
 
-                {/* Last Play */}
-                {lastPlay && (
-                  <div className="mb-6">
-                    <h3 className="text-white mb-2">Last Play by {lastPlay.playerName}:</h3>
-                    <div className="flex gap-2">
-                      {lastPlay.cards.map(card => renderCard(card))}
+                  {/* Game Table - Cards in the Middle */}
+                  {!isShuffling && !isDealing && (
+                    <div className="mb-8">
+                      <div className="bg-green-800/50 rounded-xl p-8 border-2 border-green-600/30">
+                        <div className="text-center mb-4">
+                          <h3 className="text-white text-lg font-semibold">Game Table</h3>
+                          {lastPlay && (
+                            <p className="text-white/80 text-sm">
+                              Last played by {lastPlay.playerName}
+                            </p>
+                          )}
+                        </div>
+                        
+                        {/* Cards in the middle */}
+                        <div className="flex justify-center items-center min-h-[120px]">
+                          {lastPlay ? (
+                            <div className="flex gap-2">
+                              {lastPlay.cards.map(card => (
+                                <motion.div
+                                  key={card.id}
+                                  initial={{ scale: 0, rotate: -180 }}
+                                  animate={{ scale: 1, rotate: 0 }}
+                                  transition={{ duration: 0.5, type: "spring" }}
+                                  className="relative w-16 h-24 bg-white rounded-lg shadow-lg border-2 border-gray-300"
+                                >
+                                  <div className={`absolute top-1 left-1 text-sm font-bold ${getCardColor(card.suit)}`}>
+                                    {card.value}
+                                  </div>
+                                  <div className={`absolute bottom-1 right-1 text-sm font-bold ${getCardColor(card.suit)}`}>
+                                    {card.suit}
+                                  </div>
+                                  {card.value === 'JOKER' && (
+                                    <div className="absolute inset-0 flex items-center justify-center text-2xl">
+                                      🃏
+                                    </div>
+                                  )}
+                                </motion.div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="text-white/50 text-center">
+                              <div className="text-4xl mb-2">🃏</div>
+                              <p>No cards played yet</p>
+                            </div>
+                          )}
+                        </div>
+                        
+                        {/* Player turn indicator */}
+                        <div className="text-center mt-4">
+                          <div className="inline-block bg-white/20 rounded-full px-4 py-2">
+                            <span className="text-white font-semibold">
+                              {isMyTurn ? 'Your turn!' : `Waiting for ${players.find(p => p.id === currentPlayer)?.name}...`}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
 
-                {/* My Hand */}
-                <div className="mb-6">
-                  <h3 className="text-white mb-4">Your Hand ({myHand.length} cards):</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {myHand.map(card => renderCard(card, selectedCards.some(c => c.id === card.id)))}
-                  </div>
-                </div>
+                                   {/* My Hand */}
+                  {!isShuffling && !isDealing && (
+                    <div className="mb-6">
+                      <h3 className="text-white mb-4">Your Hand ({myHand.length} cards):</h3>
+                      <div className="flex flex-wrap gap-2">
+                        {myHand.map(card => renderCard(card, selectedCards.some(c => c.id === card.id)))}
+                      </div>
+                    </div>
+                  )}
 
-                {/* Game Actions */}
-                {isMyTurn && (
-                  <div className="flex justify-center gap-4">
-                    <button
-                      onClick={playCards}
-                      disabled={!selectedCards.length}
-                      className="bg-green-500 hover:bg-green-600 disabled:bg-gray-500 text-white font-bold py-3 px-6 rounded-lg transition"
-                    >
-                      Play Cards
-                    </button>
-                    <button
-                      onClick={pass}
-                      className="bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-6 rounded-lg transition"
-                    >
-                      Pass
-                    </button>
-                  </div>
-                )}
-                <div className="flex justify-center mt-4">
-                  <button
-                    onClick={leaveGame}
-                    className="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg transition"
-                  >
-                    Leave Game
-                  </button>
-                </div>
-              </div>
-            )}
+                  {/* Game Actions */}
+                  {!isShuffling && !isDealing && isMyTurn && (
+                    <div className="flex justify-center gap-4">
+                      <button
+                        onClick={isPracticeMode ? playCardsPractice : playCards}
+                        disabled={!selectedCards.length}
+                        className="bg-green-500 hover:bg-green-600 disabled:bg-gray-500 text-white font-bold py-3 px-6 rounded-lg transition"
+                      >
+                        Play Cards
+                      </button>
+                      <button
+                        onClick={isPracticeMode ? passPractice : pass}
+                        className="bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-6 rounded-lg transition"
+                      >
+                        Pass
+                      </button>
+                    </div>
+                  )}
+                 <div className="flex justify-center mt-4">
+                   <button
+                     onClick={isPracticeMode ? leavePracticeGame : leaveGame}
+                     className="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg transition"
+                   >
+                     {isPracticeMode ? 'Leave Practice Game' : 'Leave Game'}
+                   </button>
+                 </div>
+               </div>
+             )}
 
-            {gameState === 'finished' && (
-              <div className="text-center">
-                <h2 className="text-2xl font-bold text-white mb-6">Game Finished!</h2>
-                {winner && (
-                  <div className="mb-6">
-                    <p className="text-white text-lg">
-                      Winner: {players.find(p => p.id === winner)?.name}
-                    </p>
-                    {winner === user.uid && (
-                      <p className="text-green-400 text-xl font-bold">
-                        Congratulations! You won £{betAmount * players.length}!
-                      </p>
-                    )}
-                  </div>
-                )}
-                <Link
-                  href="/casino"
-                  className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-6 rounded-lg transition"
-                >
-                  Back to Casino
-                </Link>
-              </div>
-            )}
+                         {gameState === 'finished' && (
+               <div className="text-center">
+                 <h2 className="text-2xl font-bold text-white mb-6">
+                   {isPracticeMode ? 'Practice Game Finished!' : 'Game Finished!'}
+                 </h2>
+                 {winner && (
+                   <div className="mb-6">
+                     <p className="text-white text-lg">
+                       Winner: {players.find(p => p.id === winner)?.name}
+                       {players.find(p => p.id === winner)?.isCpu && ' 🤖'}
+                     </p>
+                     {winner === user.uid && (
+                       <p className="text-green-400 text-xl font-bold">
+                         {isPracticeMode 
+                           ? 'Congratulations! You won the practice game!' 
+                           : `Congratulations! You won £${betAmount * players.length}!`
+                         }
+                       </p>
+                     )}
+                     {winner !== user.uid && players.find(p => p.id === winner)?.isCpu && (
+                       <p className="text-blue-400 text-lg">
+                         The CPU won this time. Try again to improve your skills!
+                       </p>
+                     )}
+                   </div>
+                 )}
+                 <div className="flex justify-center gap-4">
+                   {isPracticeMode ? (
+                     <>
+                       <button
+                         onClick={() => {
+                           setIsPracticeMode(false)
+                           setGameState('lobby')
+                           setPlayers([])
+                           setCpuPlayers([])
+                           setMyHand([])
+                           setSelectedCards([])
+                           setLastPlay(null)
+                           setIsMyTurn(false)
+                           setWinner(null)
+                           setCurrentPlayer(null)
+                           setCpuThinking(false)
+                           setGameId(null)
+                         }}
+                         className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-6 rounded-lg transition"
+                       >
+                         Play Again
+                       </button>
+                       <button
+                         onClick={() => {
+                           setIsPracticeMode(false)
+                           setGameState('lobby')
+                           setPlayers([])
+                           setCpuPlayers([])
+                           setMyHand([])
+                           setSelectedCards([])
+                           setLastPlay(null)
+                           setIsMyTurn(false)
+                           setWinner(null)
+                           setCurrentPlayer(null)
+                           setCpuThinking(false)
+                           setGameId(null)
+                         }}
+                         className="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-6 rounded-lg transition"
+                       >
+                         Back to Lobby
+                       </button>
+                     </>
+                   ) : (
+                     <Link
+                       href="/casino"
+                       className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-6 rounded-lg transition"
+                     >
+                       Back to Casino
+                     </Link>
+                   )}
+                 </div>
+               </div>
+             )}
           </div>
 
           {/* Navigation */}

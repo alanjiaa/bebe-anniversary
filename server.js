@@ -30,11 +30,25 @@ const io = new Server(httpServer, {
 
 // Store active games and players
 const activeGames = new Map()
-const connectedPlayers = new Map()
+const connectedPlayers = new Map() // socketId -> userInfo
+const uniqueUsers = new Map() // userId -> userInfo (for counting unique users)
+
+// Add health check endpoint
+httpServer.on('request', (req, res) => {
+  if (req.url === '/health') {
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify({ 
+      status: 'ok', 
+      timestamp: new Date().toISOString(),
+      onlinePlayers: uniqueUsers.size, // Count unique users, not socket connections
+      activeGames: activeGames.size
+    }))
+  }
+})
 
 // Function to broadcast online player count to all clients
 const broadcastOnlinePlayers = () => {
-  const count = connectedPlayers.size
+  const count = uniqueUsers.size // Count unique users, not socket connections
   io.emit('onlinePlayersUpdate', { count })
 }
 
@@ -45,14 +59,22 @@ io.on('connection', (socket) => {
   const displayName = socket.handshake.auth.displayName
   
   if (userId) {
+    // Store socket connection
     connectedPlayers.set(socket.id, { userId, displayName })
+    
+    // Store unique user (overwrites if same user connects from multiple tabs)
+    uniqueUsers.set(userId, { userId, displayName })
+    
+    console.log(`Player ${displayName} (${userId}) connected. Unique users: ${uniqueUsers.size}`)
+    
     // Broadcast updated count to all clients
     broadcastOnlinePlayers()
   }
 
   // Handle getting online player count
   socket.on('getOnlinePlayers', () => {
-    const count = connectedPlayers.size
+    const count = uniqueUsers.size // Count unique users, not socket connections
+    console.log(`Sending online player count: ${count}`)
     socket.emit('onlinePlayersUpdate', { count })
   })
 
@@ -164,8 +186,24 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     console.log('User disconnected:', socket.id)
     
+    const playerInfo = connectedPlayers.get(socket.id)
+    
     // Remove from connected players
     connectedPlayers.delete(socket.id)
+    
+    // Check if this user has any other active connections
+    if (playerInfo) {
+      const userId = playerInfo.userId
+      const hasOtherConnections = Array.from(connectedPlayers.values()).some(p => p.userId === userId)
+      
+      // Only remove from unique users if no other connections exist for this user
+      if (!hasOtherConnections) {
+        uniqueUsers.delete(userId)
+        console.log(`User ${playerInfo.displayName} (${userId}) fully disconnected. Unique users: ${uniqueUsers.size}`)
+      } else {
+        console.log(`User ${playerInfo.displayName} (${userId}) still has other connections`)
+      }
+    }
     
     // Broadcast updated count to all clients
     broadcastOnlinePlayers()

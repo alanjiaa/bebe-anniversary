@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
 import io from 'socket.io-client'
+import BackNavigation from '@/components/BackNavigation'
 
 export default function PongPage() {
   const canvasRef = useRef(null)
@@ -63,6 +64,12 @@ export default function PongPage() {
       />
       {player===null && <p>Watching…</p>}
       {player!==null && <p>You are Player {player + 1}</p>}
+      
+      <BackNavigation 
+        href="/home" 
+        text="← Back to Home" 
+        className="bg-rose-pink hover:bg-rose-pink/90 text-white font-semibold px-6 py-3 rounded-2xl transition"
+      />
     </div>
   )
 }

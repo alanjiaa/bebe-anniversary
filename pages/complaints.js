@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { auth } from '../src/lib/firebase'
 import { onAuthStateChanged } from 'firebase/auth'
 import ProtectedRoute from '@/components/ProtectedRoute'
+import BackNavigation from '@/components/BackNavigation'
 
 export default function ComplaintsPage() {
   const [userEmail, setUserEmail] = useState('')
@@ -65,6 +66,12 @@ export default function ComplaintsPage() {
           </button>
         </form>
         <p>{status}</p>
+        
+        <BackNavigation 
+          href="/home" 
+          text="← Back to Home" 
+          className="bg-rose-pink hover:bg-rose-pink/90 text-white font-semibold px-6 py-3 rounded-2xl transition"
+        />
       </div>
     </ProtectedRoute>
   )

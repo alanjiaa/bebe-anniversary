@@ -1,5 +1,6 @@
 import { useRef, useState, useEffect } from 'react';
 import html2canvas from 'html2canvas';
+import BackNavigation from '@/components/BackNavigation';
 
 const LAYOUTS = [
   { key: 'vertical', label: '4-Vertical Strip' },
@@ -337,6 +338,14 @@ export default function Photobooth() {
       {renderPrintAnimation()}
       <h1 className="text-4xl font-bold mb-4 text-rose-pink" style={{ fontFamily: 'Poppins' }}>Cute Photobooth</h1>
       {renderPhotoboothMachine()}
+      
+      {/* Back Navigation */}
+      <BackNavigation 
+        href="/home" 
+        text="← Back to Home" 
+        className="bg-rose-pink hover:bg-rose-pink/90 text-white font-semibold px-6 py-3 rounded-2xl transition"
+        showHomeButton={false}
+      />
     </div>
   );
 } 

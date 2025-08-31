@@ -7,6 +7,7 @@ import { useCart } from '@/context/CartContext'
 import { FaCoins, FaUsers, FaPlay, FaTimes, FaCheck, FaWifi } from 'react-icons/fa'
 import { toast } from 'react-hot-toast'
 import { auth, db } from '@/lib/firebase'
+import ConfirmationModal from '@/components/ConfirmationModal'
 import { 
   doc, 
   setDoc, 
@@ -105,159 +106,463 @@ const isValidCombination = (cards) => {
   if (cards.length === 4) {
     const values = cards.map(card => card.value).filter(v => v !== 'JOKER')
     const jokers = cards.filter(card => card.value === 'JOKER').length
-    return values.length === 0 || 
+    const isValid = values.length === 0 || 
            (values.length === 1 && jokers === 3) ||
            (values.length === 2 && jokers === 2 && values[0] === values[1]) ||
            (values.length === 3 && jokers === 1 && values[0] === values[1] && values[1] === values[2]) ||
            (values.length === 4 && values[0] === values[1] && values[1] === values[2] && values[2] === values[3])
+    if (isValid) return true
+    
+    // If not a bomb, check if it's consecutive doubles
+    return isConsecutiveDoubles(cards)
+  }
+  
+  // 5-Bomb (5 of a kind)
+  if (cards.length === 5) {
+    const values = cards.map(card => card.value).filter(v => v !== 'JOKER')
+    const jokers = cards.filter(card => card.value === 'JOKER').length
+    return values.length === 0 || 
+           (values.length === 1 && jokers === 4) ||
+           (values.length === 2 && jokers === 3 && values[0] === values[1]) ||
+           (values.length === 3 && jokers === 2 && values[0] === values[1] && values[1] === values[2]) ||
+           (values.length === 4 && jokers === 1 && values[0] === values[1] && values[1] === values[2] && values[2] === values[3]) ||
+           (values.length === 5 && values[0] === values[1] && values[1] === values[2] && values[2] === values[3] && values[3] === values[4])
+  }
+  
+  // 6-Bomb (6 of a kind)
+  if (cards.length === 6) {
+    const values = cards.map(card => card.value).filter(v => v !== 'JOKER')
+    const jokers = cards.filter(card => card.value === 'JOKER').length
+    const isValid = values.length === 0 || 
+           (values.length === 1 && jokers === 5) ||
+           (values.length === 2 && jokers === 4 && values[0] === values[1]) ||
+           (values.length === 3 && jokers === 3 && values[0] === values[1] && values[1] === values[2]) ||
+           (values.length === 4 && jokers === 2 && values[0] === values[1] && values[1] === values[2] && values[2] === values[3]) ||
+           (values.length === 5 && jokers === 1 && values[0] === values[1] && values[1] === values[2] && values[2] === values[3] && values[3] === values[4]) ||
+           (values.length === 6 && values[0] === values[1] && values[1] === values[2] && values[2] === values[3] && values[3] === values[4] && values[4] === values[5])
+    if (isValid) return true
+    
+    // If not a bomb, check if it's consecutive doubles
+    return isConsecutiveDoubles(cards)
+  }
+  
+  // Sequences (minimum 5 cards, 2 cannot be included)
+  if (cards.length >= 5) {
+    // For sequences, all non-joker values must be unique (except for jokers)
+    const nonJokerValues = cards.map(card => card.value).filter(v => v !== 'JOKER')
+    const uniqueValues = [...new Set(nonJokerValues)]
+    
+    // If we have duplicates of the same value, it's not a valid sequence
+    if (uniqueValues.length !== nonJokerValues.length) {
+      // Check if it's a valid non-sequence combination
+      if (isConsecutiveDoubles(cards)) return true
+      if (isTripletSequence(cards)) return true
+      if (isCoupledBombs(cards)) return true
+      if (isConsecutiveBombs(cards)) return true
+      return false
+    }
+    
+    // Check if it's a sequence
+    if (isSequence(cards)) return true
+    
+    // Check if it's consecutive doubles
+    if (isConsecutiveDoubles(cards)) return true
+    
+    // Check if it's triplet sequences
+    if (isTripletSequence(cards)) return true
+    
+    // Check if it's coupled bombs (two bombs together)
+    if (isCoupledBombs(cards)) return true
+    
+    // Check if it's consecutive bombs (two consecutive bombs)
+    if (isConsecutiveBombs(cards)) return true
   }
   
   return false
 }
 
-// Get the effective value of a card combination
+// Helper function to check if cards form a sequence (5+ consecutive cards, no 2s)
+const isSequence = (cards) => {
+  if (cards.length < 5) return false
+  
+  const values = cards.map(card => card.value).filter(v => v !== 'JOKER' && v !== '2')
+  const jokers = cards.filter(card => card.value === 'JOKER').length
+  
+  if (values.length + jokers < 5) return false
+  
+  // Remove duplicates and sort values
+  const uniqueValues = [...new Set(values)].sort((a, b) => CARD_VALUES.indexOf(a) - CARD_VALUES.indexOf(b))
+  
+  // Check if the unique values form a consecutive sequence
+  if (uniqueValues.length >= 5) {
+    // Check if the unique values form a consecutive sequence
+    for (let i = 0; i < uniqueValues.length - 4; i++) {
+      let consecutive = true
+      for (let j = 0; j < 4; j++) {
+        const currentIndex = CARD_VALUES.indexOf(uniqueValues[i + j])
+        const nextIndex = CARD_VALUES.indexOf(uniqueValues[i + j + 1])
+        if (nextIndex !== currentIndex + 1) {
+          consecutive = false
+          break
+        }
+      }
+      if (consecutive) return true
+    }
+  }
+  
+  // If we don't have enough unique values, check if jokers can help form a sequence
+  if (uniqueValues.length + jokers >= 5) {
+    // Try to form a sequence using jokers to fill gaps
+    for (let start = 0; start < uniqueValues.length; start++) {
+      let sequence = [uniqueValues[start]]
+      let jokersUsed = 0
+      
+      for (let i = 1; i < 5; i++) {
+        const expectedValue = CARD_VALUES[CARD_VALUES.indexOf(uniqueValues[start]) + i]
+        if (expectedValue && expectedValue !== '2') {
+          if (uniqueValues.includes(expectedValue)) {
+            sequence.push(expectedValue)
+          } else if (jokersUsed < jokers) {
+            sequence.push(expectedValue)
+            jokersUsed++
+          } else {
+            break
+          }
+        }
+      }
+      
+      if (sequence.length >= 5) {
+        return true
+      }
+    }
+  }
+  
+  return false
+}
+
+// Helper function to check if cards form consecutive doubles
+const isConsecutiveDoubles = (cards) => {
+  if (cards.length < 4 || cards.length % 2 !== 0) {
+    return false
+  }
+  
+  const valueCounts = {}
+  const jokers = cards.filter(card => card.value === 'JOKER')
+  
+  cards.forEach(card => {
+    if (card.value !== 'JOKER') {
+      valueCounts[card.value] = (valueCounts[card.value] || 0) + 1
+    }
+  })
+  
+  const doubleValues = Object.keys(valueCounts).filter(value => valueCounts[value] >= 2)
+  doubleValues.sort((a, b) => CARD_VALUES.indexOf(a) - CARD_VALUES.indexOf(b))
+  
+  // We need at least 2 pairs (either from actual doubles or jokers)
+  const actualPairs = doubleValues.length
+  const jokerPairs = Math.floor(jokers.length / 2)
+  const totalPairs = actualPairs + jokerPairs
+  
+  if (totalPairs < 2) {
+    return false
+  }
+  
+  // If we have actual double values, they must be consecutive
+  if (doubleValues.length >= 2) {
+    for (let i = 0; i < doubleValues.length - 1; i++) {
+      const currentIndex = CARD_VALUES.indexOf(doubleValues[i])
+      const nextIndex = CARD_VALUES.indexOf(doubleValues[i + 1])
+      if (nextIndex !== currentIndex + 1) {
+        return false
+      }
+    }
+  }
+  
+  return true
+}
+
+// Helper function to check if cards form triplet sequences
+const isTripletSequence = (cards) => {
+  if (cards.length < 6 || cards.length % 3 !== 0) return false
+  
+  const valueCounts = {}
+  const jokers = cards.filter(card => card.value === 'JOKER')
+  
+  cards.forEach(card => {
+    if (card.value !== 'JOKER') {
+      valueCounts[card.value] = (valueCounts[card.value] || 0) + 1
+    }
+  })
+  
+  const tripletValues = Object.keys(valueCounts).filter(value => valueCounts[value] >= 3)
+  tripletValues.sort((a, b) => CARD_VALUES.indexOf(a) - CARD_VALUES.indexOf(b))
+  
+  for (let i = 0; i < tripletValues.length - 1; i++) {
+    const currentIndex = CARD_VALUES.indexOf(tripletValues[i])
+    const nextIndex = CARD_VALUES.indexOf(tripletValues[i + 1])
+    if (nextIndex !== currentIndex + 1) return false
+  }
+  
+  const totalTriplets = tripletValues.length + Math.floor(jokers.length / 3)
+  return totalTriplets >= 2
+}
+
+// Helper function to check if cards form coupled bombs
+const isCoupledBombs = (cards) => {
+  if (cards.length !== 8) return false
+  
+  const group1 = cards.slice(0, 4)
+  const group2 = cards.slice(4, 8)
+  
+  return isValidCombination(group1) && isValidCombination(group2)
+}
+
+// Helper function to check if cards form consecutive bombs
+const isConsecutiveBombs = (cards) => {
+  if (cards.length !== 8) return false
+  
+  const group1 = cards.slice(0, 4)
+  const group2 = cards.slice(4, 8)
+  
+  if (!isValidCombination(group1) || !isValidCombination(group2)) return false
+  
+  const value1 = getBombValue(group1)
+  const value2 = getBombValue(group2)
+  
+  if (!value1 || !value2) return false
+  
+  const index1 = CARD_VALUES.indexOf(value1)
+  const index2 = CARD_VALUES.indexOf(value2)
+  
+  return Math.abs(index1 - index2) === 1
+}
+
+// Helper function to get bomb value without circular dependency
+const getBombValue = (cards) => {
+  if (!cards || cards.length === 0) return null
+  
+  const values = cards.map(card => card.value).filter(v => v !== 'JOKER')
+  const jokers = cards.filter(card => card.value === 'JOKER').length
+  
+  if (values.length === 0) return '2'
+  
+  // For 4-card bombs
+  if (cards.length === 4) {
+    if (jokers === 3 && values.length === 1) return values[0]
+    if (jokers === 2 && values.length === 2 && values[0] === values[1]) return values[0]
+    if (jokers === 1 && values.length === 3 && values[0] === values[1] && values[1] === values[2]) return values[0]
+    if (values.length === 4 && values[0] === values[1] && values[1] === values[2] && values[2] === values[3]) return values[0]
+  }
+  
+  // For 5-card bombs
+  if (cards.length === 5) {
+    if (jokers === 4 && values.length === 1) return values[0]
+    if (jokers === 3 && values.length === 2 && values[0] === values[1]) return values[0]
+    if (jokers === 2 && values.length === 3 && values[0] === values[1] && values[1] === values[2]) return values[0]
+    if (jokers === 1 && values.length === 4 && values[0] === values[1] && values[1] === values[2] && values[2] === values[3]) return values[0]
+    if (values.length === 5 && values[0] === values[1] && values[1] === values[2] && values[2] === values[3] && values[3] === values[4]) return values[0]
+  }
+  
+  // For 6-card bombs
+  if (cards.length === 6) {
+    if (jokers === 5 && values.length === 1) return values[0]
+    if (jokers === 4 && values.length === 2 && values[0] === values[1]) return values[0]
+    if (jokers === 3 && values.length === 3 && values[0] === values[1] && values[1] === values[2]) return values[0]
+    if (jokers === 2 && values.length === 4 && values[0] === values[1] && values[1] === values[2] && values[2] === values[3]) return values[0]
+    if (jokers === 1 && values.length === 5 && values[0] === values[1] && values[1] === values[2] && values[2] === values[3] && values[3] === values[4]) return values[0]
+    if (values.length === 6 && values[0] === values[1] && values[1] === values[2] && values[2] === values[3] && values[3] === values[4] && values[4] === values[5]) return values[0]
+  }
+  
+  return values[0] || '2'
+}
+
+// Efficient combination value calculation - consolidated logic
 const getCombinationValue = (cards) => {
   if (!cards || cards.length === 0) return null
   
   const values = cards.map(card => card.value).filter(v => v !== 'JOKER')
   const jokers = cards.filter(card => card.value === 'JOKER').length
   
-  console.log(`getCombinationValue: cards=${cards.map(c => c.value)}, values=${values}, jokers=${jokers}`)
+  if (values.length === 0) return '2'
   
-  if (values.length === 0) {
-    // All jokers - highest value
-    console.log('All jokers, returning 2')
-    return '2'
-  }
-  
-  // For combinations with jokers, we need to determine the effective value
-  // For doubles: if we have one joker and one card, the joker becomes the same value as the card
-  // For triplets: if we have two jokers and one card, both jokers become that card's value
-  // For bombs: similar logic applies
-  
-  if (cards.length === 2) {
-    // Double: if one is joker, the joker becomes the other card's value
-    if (jokers === 1 && values.length === 1) {
-      console.log('Double with joker, returning:', values[0])
-      return values[0]
-    }
-    // Both same value
-    if (values.length === 2 && values[0] === values[1]) {
-      console.log('Double with same values, returning:', values[0])
-      return values[0]
-    }
-  }
-  
-  if (cards.length === 3) {
-    // Triplet: if we have jokers, they become the same value as the non-joker cards
-    if (jokers === 2 && values.length === 1) {
-      console.log('Triplet with 2 jokers, returning:', values[0])
-      return values[0]
-    }
-    if (jokers === 1 && values.length === 2 && values[0] === values[1]) {
-      console.log('Triplet with 1 joker, returning:', values[0])
-      return values[0]
-    }
-    if (values.length === 3 && values[0] === values[1] && values[1] === values[2]) {
-      console.log('Triplet with 3 same values, returning:', values[0])
-      return values[0]
-    }
-  }
-  
-  if (cards.length === 4) {
-    // Bomb: similar logic for 4 of a kind
-    if (jokers === 3 && values.length === 1) {
-      console.log('Bomb with 3 jokers, returning:', values[0])
-      return values[0]
-    }
-    if (jokers === 2 && values.length === 2 && values[0] === values[1]) {
-      console.log('Bomb with 2 jokers, returning:', values[0])
-      return values[0]
-    }
-    if (jokers === 1 && values.length === 3 && values[0] === values[1] && values[1] === values[2]) {
-      console.log('Bomb with 1 joker, returning:', values[0])
-      return values[0]
-    }
-    if (values.length === 4 && values[0] === values[1] && values[1] === values[2] && values[2] === values[3]) {
-      console.log('Bomb with 4 same values, returning:', values[0])
-      return values[0]
-    }
-  }
-  
-  // For singles, just return the card value
+  // Singles
   if (cards.length === 1) {
-    const result = cards[0].value === 'JOKER' ? '2' : cards[0].value
-    console.log('Single card, returning:', result)
-    return result
+    return cards[0].value === 'JOKER' ? '2' : cards[0].value
   }
   
-  // Fallback: return the first non-joker value
-  const result = values[0] || '2'
-  console.log('Fallback, returning:', result)
-  return result
+  // Doubles
+  if (cards.length === 2) {
+    if (jokers === 1 && values.length === 1) return values[0]
+    if (values.length === 2 && values[0] === values[1]) return values[0]
+  }
+  
+  // Triplets
+  if (cards.length === 3) {
+    if (jokers === 2 && values.length === 1) return values[0]
+    if (jokers === 1 && values.length === 2 && values[0] === values[1]) return values[0]
+    if (values.length === 3 && values[0] === values[1] && values[1] === values[2]) return values[0]
+  }
+  
+  // Bombs (4, 5, 6 cards)
+  if (cards.length >= 4 && cards.length <= 6) {
+    const bombValue = getBombValue(cards)
+    if (bombValue) return bombValue
+  }
+  
+  // Sequences (5+ cards)
+  if (cards.length >= 5) {
+    if (isSequence(cards)) {
+      const sortedValues = values.sort((a, b) => CARD_VALUES.indexOf(a) - CARD_VALUES.indexOf(b))
+      return sortedValues[sortedValues.length - 1]
+    }
+    
+    if (isConsecutiveDoubles(cards)) {
+      const valueCounts = {}
+      cards.forEach(card => {
+        if (card.value !== 'JOKER') {
+          valueCounts[card.value] = (valueCounts[card.value] || 0) + 1
+        }
+      })
+      const doubleValues = Object.keys(valueCounts).filter(value => valueCounts[value] >= 2)
+      const sortedDoubleValues = doubleValues.sort((a, b) => CARD_VALUES.indexOf(a) - CARD_VALUES.indexOf(b))
+      return sortedDoubleValues[sortedDoubleValues.length - 1]
+    }
+    
+    if (isTripletSequence(cards)) {
+      const valueCounts = {}
+      cards.forEach(card => {
+        if (card.value !== 'JOKER') {
+          valueCounts[card.value] = (valueCounts[card.value] || 0) + 1
+        }
+      })
+      const tripletValues = Object.keys(valueCounts).filter(value => valueCounts[value] >= 3)
+      const sortedTripletValues = tripletValues.sort((a, b) => CARD_VALUES.indexOf(a) - CARD_VALUES.indexOf(b))
+      return sortedTripletValues[sortedTripletValues.length - 1]
+    }
+    
+    if (isCoupledBombs(cards) || isConsecutiveBombs(cards)) {
+      const group1 = cards.slice(0, 4)
+      const group2 = cards.slice(4, 8)
+      const value1 = getBombValue(group1)
+      const value2 = getBombValue(group2)
+      const index1 = CARD_VALUES.indexOf(value1)
+      const index2 = CARD_VALUES.indexOf(value2)
+      return index1 > index2 ? value1 : value2
+    }
+  }
+  
+  return values[0] || '2'
 }
 
-// Check if combination A can beat combination B
+// Efficient canBeat function - simplified logic
 const canBeat = (cardsA, cardsB) => {
-  console.log(`canBeat called: ${cardsA.map(c => c.value)} vs ${cardsB.map(c => c.value)}`)
+  if (!isValidCombination(cardsA) || !isValidCombination(cardsB)) return false
   
-  if (!isValidCombination(cardsA) || !isValidCombination(cardsB)) {
-    console.log('Invalid combination detected')
-    return false
+  // Check if either combination is a consecutive bomb (8 cards)
+  const isConsecutiveBombA = cardsA.length === 8 && isConsecutiveBombs(cardsA)
+  const isConsecutiveBombB = cardsB.length === 8 && isConsecutiveBombs(cardsB)
+  
+  // Consecutive bombs beat any single bomb
+  if (isConsecutiveBombA && !isConsecutiveBombB) return true
+  if (!isConsecutiveBombA && isConsecutiveBombB) return false
+  
+  // If both are consecutive bombs, compare their values
+  if (isConsecutiveBombA && isConsecutiveBombB) {
+    const valueA = getCombinationValue(cardsA)
+    const valueB = getCombinationValue(cardsB)
+    if (!valueA || !valueB) return false
+    const indexA = CARD_VALUES.indexOf(valueA)
+    const indexB = CARD_VALUES.indexOf(valueB)
+    return indexA > indexB
   }
   
-  // Bombs can beat anything
-  if (cardsA.length === 4 && cardsB.length !== 4) {
-    console.log('A is bomb, B is not - A wins')
-    return true
-  }
-  if (cardsB.length === 4 && cardsA.length !== 4) {
-    console.log('B is bomb, A is not - B wins')
-    return false
+  // Check if either combination is a coupled bomb (8 cards)
+  const isCoupledBombA = cardsA.length === 8 && isCoupledBombs(cardsA)
+  const isCoupledBombB = cardsB.length === 8 && isCoupledBombs(cardsB)
+  
+  // Coupled bombs beat any single bomb
+  if (isCoupledBombA && !isCoupledBombB) return true
+  if (!isCoupledBombA && isCoupledBombB) return false
+  
+  // If both are coupled bombs, compare their values
+  if (isCoupledBombA && isCoupledBombB) {
+    const valueA = getCombinationValue(cardsA)
+    const valueB = getCombinationValue(cardsB)
+    if (!valueA || !valueB) return false
+    const indexA = CARD_VALUES.indexOf(valueA)
+    const indexB = CARD_VALUES.indexOf(valueB)
+    return indexA > indexB
   }
   
-  // Same length combinations only
-  if (cardsA.length !== cardsB.length) {
-    console.log('Different lengths, cannot beat')
-    return false
+  // Single bomb hierarchy (6 > 5 > 4)
+  const getSingleBombRank = (cards) => {
+    if (cards.length === 6 && isValidCombination(cards)) return 6
+    if (cards.length === 5 && isValidCombination(cards)) return 5
+    if (cards.length === 4 && isValidCombination(cards)) return 4
+    return 0
   }
   
-  // Get the effective values for comparison
+  const bombRankA = getSingleBombRank(cardsA)
+  const bombRankB = getSingleBombRank(cardsB)
+  
+  if (bombRankA > 0 && bombRankB === 0) return true
+  if (bombRankB > 0 && bombRankA === 0) return false
+  if (bombRankA > 0 && bombRankB > 0) {
+    if (bombRankA > bombRankB) return true
+    if (bombRankB > bombRankA) return false
+  }
+  
+  // Same type check
+  if (!isSameType(cardsA, cardsB)) return false
+  
+  // Value comparison
   const valueA = getCombinationValue(cardsA)
   const valueB = getCombinationValue(cardsB)
   
-  console.log(`Effective values: A=${valueA}, B=${valueB}`)
-  
-  if (!valueA || !valueB) {
-    console.log('Invalid values detected')
-    return false
-  }
+  if (!valueA || !valueB) return false
   
   const indexA = CARD_VALUES.indexOf(valueA)
   const indexB = CARD_VALUES.indexOf(valueB)
   
-  console.log(`Card indices: A=${indexA} (${valueA}), B=${indexB} (${valueB})`)
+  return indexA > indexB
+}
+
+// Efficient same type check
+const isSameType = (cardsA, cardsB) => {
+  if (cardsA.length !== cardsB.length) return false
   
-  // Higher index means higher value (2 is highest, 3 is lowest)
-  const result = indexA > indexB
-  console.log(`Result: ${result}`)
-  return result
+  // Simple length-based types (singles, doubles, triplets, single bombs)
+  if (cardsA.length <= 6) return true
+  
+  // Complex types (5+ cards)
+  if (cardsA.length >= 5) {
+    if (isSequence(cardsA) && isSequence(cardsB)) return true
+    if (isConsecutiveDoubles(cardsA) && isConsecutiveDoubles(cardsB)) return true
+    if (isTripletSequence(cardsA) && isTripletSequence(cardsB)) return true
+  }
+  
+  // 8-card combinations (coupled bombs and consecutive bombs)
+  if (cardsA.length === 8) {
+    if (isCoupledBombs(cardsA) && isCoupledBombs(cardsB)) return true
+    if (isConsecutiveBombs(cardsA) && isConsecutiveBombs(cardsB)) return true
+  }
+  
+  return false
 }
 
 // CPU player names
 const CPU_NAMES = ['bobbybuoy', 'jerfeen', 'butter', 'sang', 'vivibot', 'alsiebot']
 
-// CPU Logic - Find valid combinations in hand
+// Efficient combination finder - simplified and optimized
 const findValidCombinations = (hand) => {
   const combinations = []
   
-  // Single cards
+  // Singles
   hand.forEach(card => combinations.push([card]))
   
   // Doubles
   for (let i = 0; i < hand.length - 1; i++) {
     for (let j = i + 1; j < hand.length; j++) {
-      // Both cards must be the same value, or one must be a joker (but not both jokers)
       if (hand[i].value === hand[j].value || 
           (hand[i].value === 'JOKER' && hand[j].value !== 'JOKER') ||
           (hand[j].value === 'JOKER' && hand[i].value !== 'JOKER')) {
@@ -278,21 +583,116 @@ const findValidCombinations = (hand) => {
     }
   }
   
-  // Bombs (4 of a kind)
-  for (let i = 0; i < hand.length - 3; i++) {
-    for (let j = i + 1; j < hand.length - 2; j++) {
-      for (let k = j + 1; k < hand.length - 1; k++) {
-        for (let l = k + 1; l < hand.length; l++) {
-          const cards = [hand[i], hand[j], hand[k], hand[l]]
-          if (isValidCombination(cards)) {
-            combinations.push(cards)
+  // Bombs (4, 5, 6 of a kind)
+  for (let size = 4; size <= 6 && size <= hand.length; size++) {
+    const generateBombs = (arr, size, start = 0, current = []) => {
+      if (current.length === size) {
+        const combination = [...current]
+        if (isValidCombination(combination)) {
+          combinations.push(combination)
+        }
+        return
+      }
+      
+      for (let i = start; i < arr.length; i++) {
+        current.push(arr[i])
+        generateBombs(arr, size, i + 1, current)
+        current.pop()
+      }
+    }
+    
+    generateBombs(hand, size)
+  }
+  
+  // Sequences and complex combinations (5+ cards) - limited to prevent performance issues
+  if (hand.length >= 5) {
+    // Only generate combinations up to 8 cards to prevent explosion
+    const maxSize = Math.min(8, hand.length)
+    for (let size = 5; size <= maxSize; size++) {
+      const generateCombinations = (arr, size, start = 0, current = []) => {
+        if (current.length === size) {
+          const combination = [...current]
+          if (isValidCombination(combination)) {
+            combinations.push(combination)
           }
+          return
+        }
+        
+        for (let i = start; i < arr.length; i++) {
+          current.push(arr[i])
+          generateCombinations(arr, size, i + 1, current)
+          current.pop()
         }
       }
+      
+      generateCombinations(hand, size)
     }
   }
   
   return combinations
+}
+
+// Helper function to get combination type
+const getCombinationType = (cards) => {
+  if (!cards || cards.length === 0) return 'invalid'
+  
+  if (cards.length === 1) return 'single'
+  if (cards.length === 2) return 'double'
+  if (cards.length === 3) return 'triplet'
+  
+  // Check for bombs first
+  if (cards.length === 4) {
+    const values = cards.map(card => card.value).filter(v => v !== 'JOKER')
+    const jokers = cards.filter(card => card.value === 'JOKER').length
+    const isValid = values.length === 0 || 
+           (values.length === 1 && jokers === 3) ||
+           (values.length === 2 && jokers === 2 && values[0] === values[1]) ||
+           (values.length === 3 && jokers === 1 && values[0] === values[1] && values[1] === values[2]) ||
+           (values.length === 4 && values[0] === values[1] && values[1] === values[2] && values[2] === values[3])
+    if (isValid) return 'bomb_4'
+  }
+  
+  if (cards.length === 5) {
+    const values = cards.map(card => card.value).filter(v => v !== 'JOKER')
+    const jokers = cards.filter(card => card.value === 'JOKER').length
+    const isValid = values.length === 0 || 
+           (values.length === 1 && jokers === 4) ||
+           (values.length === 2 && jokers === 3 && values[0] === values[1]) ||
+           (values.length === 3 && jokers === 2 && values[0] === values[1] && values[1] === values[2]) ||
+           (values.length === 4 && jokers === 1 && values[0] === values[1] && values[1] === values[2] && values[2] === values[3]) ||
+           (values.length === 5 && values[0] === values[1] && values[1] === values[2] && values[2] === values[3] && values[3] === values[4])
+    if (isValid) return 'bomb_5'
+  }
+  
+  if (cards.length === 6) {
+    const values = cards.map(card => card.value).filter(v => v !== 'JOKER')
+    const jokers = cards.filter(card => card.value === 'JOKER').length
+    const isValid = values.length === 0 || 
+           (values.length === 1 && jokers === 5) ||
+           (values.length === 2 && jokers === 4 && values[0] === values[1]) ||
+           (values.length === 3 && jokers === 3 && values[0] === values[1] && values[1] === values[2]) ||
+           (values.length === 4 && jokers === 2 && values[0] === values[1] && values[1] === values[2] && values[2] === values[3]) ||
+           (values.length === 5 && jokers === 1 && values[0] === values[1] && values[1] === values[2] && values[2] === values[3] && values[3] === values[4]) ||
+           (values.length === 6 && values[0] === values[1] && values[1] === values[2] && values[2] === values[3] && values[3] === values[4] && values[4] === values[5])
+    if (isValid) return 'bomb_6'
+  }
+  
+  // Check for sequences
+  if (isSequence(cards)) return 'sequence'
+  
+  // Check for consecutive doubles
+  if (isConsecutiveDoubles(cards)) return 'consecutive_doubles'
+  
+  // Check for triplet sequences
+  if (isTripletSequence(cards)) return 'triplet_sequence'
+  
+  // Check for coupled bombs
+  if (isCoupledBombs(cards)) return 'coupled_bombs'
+  
+  // Check for consecutive bombs
+  if (isConsecutiveBombs(cards)) return 'consecutive_bombs'
+  
+  return 'invalid'
 }
 
 export default function CardGame() {
@@ -303,6 +703,7 @@ export default function CardGame() {
   const [myHand, setMyHand] = useState([])
   const [selectedCards, setSelectedCards] = useState([])
   const [lastPlay, setLastPlay] = useState(null)
+  const [passedPlayers, setPassedPlayers] = useState([]) // Track who has passed on current play
   const [gameId, setGameId] = useState(null)
   const [socket, setSocket] = useState(null)
   const [betAmount, setBetAmount] = useState(1)
@@ -319,6 +720,10 @@ export default function CardGame() {
   const [isPracticeMode, setIsPracticeMode] = useState(false)
   const [cpuPlayers, setCpuPlayers] = useState([])
   const [cpuThinking, setCpuThinking] = useState(false)
+  
+  // Confirmation modal state
+  const [showLeaveConfirmation, setShowLeaveConfirmation] = useState(false)
+  const [pendingLeaveAction, setPendingLeaveAction] = useState(null)
   
      // New state for shuffling and dealing animations
    const [isShuffling, setIsShuffling] = useState(false)
@@ -730,11 +1135,17 @@ export default function CardGame() {
     setMyHand([])
     setSelectedCards([])
     setLastPlay(null)
+    setPassedPlayers([])
     setIsMyTurn(false)
     setWinner(null)
     setBetDeducted(false)
     
     toast.success('Left the game')
+  }
+
+  const handleLeaveGameClick = () => {
+    setPendingLeaveAction(() => leaveGame)
+    setShowLeaveConfirmation(true)
   }
 
   const selectCard = (card) => {
@@ -866,6 +1277,7 @@ export default function CardGame() {
      setGameState('playing')
      setCurrentPlayer(firstPlayer.id)
      setIsMyTurn(firstPlayer.id === user.uid)
+     setPassedPlayers([]) // Reset passed players at game start
      
      // Always set my hand regardless of who goes first
      const myPlayer = updatedPlayers.find(p => p.id === user.uid)
@@ -878,15 +1290,15 @@ export default function CardGame() {
      if (firstPlayer.isCpu) {
        console.log('CPU goes first, starting CPU turn')
        // Use the updatedPlayers data directly instead of relying on state
-       setTimeout(() => {
-         handleCpuTurn(firstPlayer, updatedPlayers, null)
-       }, 1000)
+               setTimeout(() => {
+          handleCpuTurn(firstPlayer, updatedPlayers, null, [])
+        }, 1000)
      } else {
        console.log('User goes first')
      }
    }
 
-    const handleCpuTurn = async (cpuPlayer, playersData = null, lastPlayData = null) => {
+         const handleCpuTurn = async (cpuPlayer, playersData = null, lastPlayData = null, currentPassedPlayers = null) => {
     if (!isPracticeMode || !cpuPlayer.isCpu) return
     
     // Prevent multiple CPU turns from running simultaneously
@@ -897,15 +1309,68 @@ export default function CardGame() {
     
     console.log('=== CPU TURN START ===')
     console.log('CPU turn started for:', cpuPlayer.name)
-    console.log('Current player should be:', currentPlayer)
-    console.log('Is my turn:', isMyTurn)
     
     setCpuThinking(true)
     
-    // Simulate thinking time
-    await new Promise(resolve => setTimeout(resolve, 1500))
+    // Add a timeout to prevent infinite loops
+    const timeout = setTimeout(() => {
+      console.log('CPU turn timeout - forcing pass')
+      setCpuThinking(false)
+      
+      const playersToUse = playersData || players
+      const currentPlayerIndex = playersToUse.findIndex(p => p.id === cpuPlayer.id)
+      const nextPlayerIndex = (currentPlayerIndex + 1) % playersToUse.length
+      const nextPlayer = playersToUse[nextPlayerIndex]
+      
+             const passedPlayersToUse = currentPassedPlayers || passedPlayers
+             const newPassedPlayers = [...passedPlayersToUse, cpuPlayer.id]
+       
+       // Check if all players have passed on this play
+       // We need to exclude the player who made the original play from the count
+       const originalPlayerId = lastPlayData?.playerId
+       const playersWhoCanPass = playersToUse.filter(p => p.id !== originalPlayerId)
+       const allPlayersPassed = newPassedPlayers.length === playersWhoCanPass.length
+       
+       // Debug: Check if this CPU is the original player
+       if (cpuPlayer.id === originalPlayerId) {
+         console.log('ERROR: CPU timeout - CPU is trying to pass on their own play! This should not happen.')
+         console.log('CPU ID:', cpuPlayer.id)
+         console.log('Original player ID:', originalPlayerId)
+         return
+       }
+      
+             console.log('CPU timeout - Passed players:', newPassedPlayers)
+       console.log('CPU timeout - Original player ID:', originalPlayerId)
+       console.log('CPU timeout - Players who can pass:', playersWhoCanPass.map(p => p.name))
+       console.log('CPU timeout - Total players who can pass:', playersWhoCanPass.length)
+       console.log('CPU timeout - All players passed:', allPlayersPassed)
+      
+      setCurrentPlayer(nextPlayer.id)
+      setIsMyTurn(nextPlayer.id === user.uid)
+      setPassedPlayers(allPlayersPassed ? [] : newPassedPlayers)
+      
+      if (allPlayersPassed) {
+        setLastPlay(null)
+        console.log('CPU timeout - All players passed, resetting lastPlay to null')
+      } else {
+        console.log('CPU timeout - Not all players passed yet, keeping lastPlay:', lastPlayData?.cards?.map(c => c.value))
+      }
+      
+      setPlayers(playersToUse)
+      
+             if (nextPlayer.isCpu) {
+         setTimeout(() => {
+           handleCpuTurn(nextPlayer, playersToUse, allPlayersPassed ? null : lastPlayData, allPlayersPassed ? [] : newPassedPlayers)
+         }, 1000)
+       }
+      
+      toast(`${cpuPlayer.name} passed (timeout)`)
+    }, 1500) // Reduced timeout to 1.5 seconds
     
-    // Get the current CPU player data from the passed data or players state
+    // Simulate thinking time
+    await new Promise(resolve => setTimeout(resolve, 1000)) // Reduced thinking time
+    
+    // Get the current CPU player data
     const playersToUse = playersData || players
     const currentCpuPlayer = playersToUse.find(p => p.id === cpuPlayer.id)
     if (!currentCpuPlayer) {
@@ -916,114 +1381,149 @@ export default function CardGame() {
     
     const cpuHand = currentCpuPlayer.hand
     console.log('CPU hand:', cpuHand.map(c => c.value))
-    console.log('Last play:', lastPlayData?.cards?.map(c => c.value))
     
-    // Determine what to play
     let bestPlay = null
     
     if (!lastPlayData) {
-      // First play of the game - play lowest single card
+      // First play - play lowest single card
       console.log('CPU making first play')
       const singles = cpuHand.filter(card => card.value !== 'JOKER')
       if (singles.length > 0) {
-        // Find lowest non-joker card
         bestPlay = [singles.reduce((lowest, current) => {
           const lowestIndex = CARD_VALUES.indexOf(lowest.value)
           const currentIndex = CARD_VALUES.indexOf(current.value)
           return currentIndex < lowestIndex ? current : lowest
         })]
       } else {
-        // Only jokers available, play the first one
         bestPlay = [cpuHand[0]]
       }
     } else {
       // Responding to a play - find valid play that beats last play
       console.log('CPU responding to last play:', lastPlayData.cards.map(c => c.value))
       
-      // Find all valid combinations in hand
-      const combinations = []
+      let validPlays = []
       
-      // Singles
-      cpuHand.forEach(card => combinations.push([card]))
-      
-      // Doubles
-      for (let i = 0; i < cpuHand.length - 1; i++) {
-        for (let j = i + 1; j < cpuHand.length; j++) {
-          if (cpuHand[i].value === cpuHand[j].value || 
-              (cpuHand[i].value === 'JOKER' && cpuHand[j].value !== 'JOKER') ||
-              (cpuHand[j].value === 'JOKER' && cpuHand[i].value !== 'JOKER')) {
-            combinations.push([cpuHand[i], cpuHand[j]])
-          }
-        }
-      }
-      
-      // Triplets
-      for (let i = 0; i < cpuHand.length - 2; i++) {
-        for (let j = i + 1; j < cpuHand.length - 1; j++) {
-          for (let k = j + 1; k < cpuHand.length; k++) {
-            const cards = [cpuHand[i], cpuHand[j], cpuHand[k]]
-            if (isValidCombination(cards)) {
-              combinations.push(cards)
+      try {
+        // Get the last play type
+        const lastPlayType = getCombinationType(lastPlayData.cards)
+        console.log('Last play type:', lastPlayType)
+        
+        // Only handle simple combinations - let complex ones fall through to bomb search
+        if (lastPlayType === 'single') {
+          // For singles, just find a higher single card
+          const singles = cpuHand.filter(card => card.value !== 'JOKER')
+          for (const card of singles) {
+            if (canBeat([card], lastPlayData.cards)) {
+              validPlays.push([card])
             }
           }
-        }
-      }
-      
-      // Bombs
-      for (let i = 0; i < cpuHand.length - 3; i++) {
-        for (let j = i + 1; j < cpuHand.length - 2; j++) {
-          for (let k = j + 1; k < cpuHand.length - 1; k++) {
-            for (let l = k + 1; l < cpuHand.length; l++) {
-              const cards = [cpuHand[i], cpuHand[j], cpuHand[k], cpuHand[l]]
-              if (isValidCombination(cards)) {
-                combinations.push(cards)
+        } else if (lastPlayType === 'double') {
+          // For doubles, find pairs that can beat
+          for (let i = 0; i < cpuHand.length - 1; i++) {
+            for (let j = i + 1; j < cpuHand.length; j++) {
+              const pair = [cpuHand[i], cpuHand[j]]
+              if (isValidCombination(pair) && canBeat(pair, lastPlayData.cards)) {
+                validPlays.push(pair)
+              }
+            }
+          }
+        } else if (lastPlayType === 'triplet') {
+          // For triplets, find triplets that can beat
+          for (let i = 0; i < cpuHand.length - 2; i++) {
+            for (let j = i + 1; j < cpuHand.length - 1; j++) {
+              for (let k = j + 1; k < cpuHand.length; k++) {
+                const triplet = [cpuHand[i], cpuHand[j], cpuHand[k]]
+                if (isValidCombination(triplet) && canBeat(triplet, lastPlayData.cards)) {
+                  validPlays.push(triplet)
+                }
               }
             }
           }
         }
-      }
-      
-      console.log('All combinations found:', combinations.map(combo => combo.map(c => c.value)))
-      
-      // Find combinations that can beat the last play
-      const validPlays = combinations.filter(combo => {
-        if (!lastPlayData) return true
-        const canBeatResult = canBeat(combo, lastPlayData.cards)
-        console.log(`Checking if ${combo.map(c => c.value)} can beat ${lastPlayData.cards.map(c => c.value)}: ${canBeatResult}`)
-        return canBeatResult
-      })
-      
-      console.log('Valid plays that can beat last play:', validPlays.map(combo => combo.map(c => c.value)))
-      
-      if (validPlays.length > 0) {
-        // Choose the lowest valid play of the same type as last play
-        const targetLength = lastPlayData.cards.length
-        const targetPlays = validPlays.filter(combo => combo.length === targetLength)
         
-        console.log(`Target length: ${targetLength}, Target plays:`, targetPlays.map(combo => combo.map(c => c.value)))
+        // If no valid plays found, look for bombs
+        if (validPlays.length === 0) {
+          console.log('No same-type plays found, looking for bombs')
+          
+          // Look for 4-card bombs first
+          if (cpuHand.length >= 4) {
+            // Group cards by value
+            const valueGroups = {}
+            cpuHand.forEach(card => {
+              if (card.value !== 'JOKER') {
+                valueGroups[card.value] = valueGroups[card.value] || []
+                valueGroups[card.value].push(card)
+              }
+            })
+            
+            // Find values with 4 or more cards
+            for (const [value, cards] of Object.entries(valueGroups)) {
+              if (cards.length >= 4) {
+                const bomb = cards.slice(0, 4)
+                if (canBeat(bomb, lastPlayData.cards)) {
+                  validPlays.push(bomb)
+                }
+              }
+            }
+          }
+          
+          // If still no bombs, look for 5-card bombs
+          if (validPlays.length === 0 && cpuHand.length >= 5) {
+            const valueGroups = {}
+            cpuHand.forEach(card => {
+              if (card.value !== 'JOKER') {
+                valueGroups[card.value] = valueGroups[card.value] || []
+                valueGroups[card.value].push(card)
+              }
+            })
+            
+            for (const [value, cards] of Object.entries(valueGroups)) {
+              if (cards.length >= 5) {
+                const bomb = cards.slice(0, 5)
+                if (canBeat(bomb, lastPlayData.cards)) {
+                  validPlays.push(bomb)
+                }
+              }
+            }
+          }
+          
+          // If still no bombs, look for 6-card bombs
+          if (validPlays.length === 0 && cpuHand.length >= 6) {
+            const valueGroups = {}
+            cpuHand.forEach(card => {
+              if (card.value !== 'JOKER') {
+                valueGroups[card.value] = valueGroups[card.value] || []
+                valueGroups[card.value].push(card)
+              }
+            })
+            
+            for (const [value, cards] of Object.entries(valueGroups)) {
+              if (cards.length >= 6) {
+                const bomb = cards.slice(0, 6)
+                if (canBeat(bomb, lastPlayData.cards)) {
+                  validPlays.push(bomb)
+                }
+              }
+            }
+          }
+        }
         
-        if (targetPlays.length > 0) {
-          // Choose lowest play of same type
-          bestPlay = targetPlays.reduce((lowest, current) => {
+        console.log('Valid plays found:', validPlays.length)
+        
+        if (validPlays.length > 0) {
+          // Choose lowest play
+          bestPlay = validPlays.reduce((lowest, current) => {
             const lowestValue = getCombinationValue(lowest)
             const currentValue = getCombinationValue(current)
             const lowestIndex = CARD_VALUES.indexOf(lowestValue)
             const currentIndex = CARD_VALUES.indexOf(currentValue)
-            console.log(`Comparing ${current.map(c => c.value)} (${currentValue}, index ${currentIndex}) vs ${lowest.map(c => c.value)} (${lowestValue}, index ${lowestIndex})`)
             return currentIndex < lowestIndex ? current : lowest
-          })
-          console.log('Selected best play of same type:', bestPlay.map(c => c.value))
-        } else {
-          // Use a bomb if available
-          const bombs = validPlays.filter(combo => combo.length === 4)
-          console.log('No same-type plays, checking bombs:', bombs.map(combo => combo.map(c => c.value)))
-          if (bombs.length > 0) {
-            bestPlay = bombs[0]
-            console.log('Selected bomb:', bestPlay.map(c => c.value))
-          }
+          }, validPlays[0])
+          
+          console.log('Selected best play:', bestPlay.map(c => c.value))
         }
-      } else {
-        console.log('No valid plays found, CPU will pass')
+      } catch (error) {
+        console.error('Error in CPU decision making:', error)
       }
     }
     
@@ -1031,13 +1531,20 @@ export default function CardGame() {
       // CPU plays cards
       console.log('CPU playing:', bestPlay.map(c => c.value))
       
+      // Final validation check - ensure the play is valid
+      if (!isValidCombination(bestPlay)) {
+        console.error('ERROR: CPU generated invalid combination:', bestPlay.map(c => c.value))
+        console.log('CPU will pass instead')
+        bestPlay = null
+      } else if (lastPlayData && !canBeat(bestPlay, lastPlayData.cards)) {
+        console.error('ERROR: CPU generated combination that cannot beat last play')
+        console.log('CPU will pass instead')
+        bestPlay = null
+      }
+      
       const updatedHand = cpuHand.filter(card => 
         !bestPlay.some(playedCard => playedCard.id === card.id)
       )
-      
-      console.log('CPU cards removed:', bestPlay.map(c => c.value))
-      console.log('CPU original hand length:', cpuHand.length)
-      console.log('CPU updated hand length:', updatedHand.length)
       
       const newLastPlay = {
         playerId: cpuPlayer.id,
@@ -1059,10 +1566,8 @@ export default function CardGame() {
       const nextPlayerIndex = (currentPlayerIndex + 1) % playersToUse.length
       const nextPlayer = playersToUse[nextPlayerIndex]
       
-      console.log('Next player:', nextPlayer.name, 'isCpu:', nextPlayer.isCpu)
-      
-      // Clear selected cards first to prevent visual issues
-      setSelectedCards([])
+      // Clear the timeout since we're completing successfully
+      clearTimeout(timeout)
       
       // Update all states at once
       setPlayers(updatedPlayers)
@@ -1070,15 +1575,11 @@ export default function CardGame() {
       setCurrentPlayer(nextPlayer.id)
       setIsMyTurn(nextPlayer.id === user.uid)
       setCpuThinking(false)
+      setPassedPlayers([])
       
       // Always show my hand if I'm the user
       const myPlayer = updatedPlayers.find(p => p.id === user.uid)
       setMyHand(myPlayer ? myPlayer.hand : [])
-      
-      // Force a re-render to ensure state is updated
-      setTimeout(() => {
-        console.log('CPU state update verification - CPU hand after update:', updatedHand.map(c => c.value))
-      }, 0)
       
       // Check for winner
       if (updatedHand.length === 0) {
@@ -1090,14 +1591,14 @@ export default function CardGame() {
       
       // If next player is CPU, continue the turn
       if (nextPlayer.isCpu) {
-        console.log('Next player is CPU, continuing turn chain')
+        console.log('Next player is CPU, starting CPU turn')
         setTimeout(() => {
-          handleCpuTurn(nextPlayer, updatedPlayers, newLastPlay)
+          handleCpuTurn(nextPlayer, updatedPlayers, newLastPlay, [])
         }, 1000)
       } else {
-        console.log('Turn passed to user after CPU play')
-        setIsMyTurn(true)
-      }
+       console.log('Next player is user, setting turn')
+       setIsMyTurn(true)
+     }
     } else {
       // CPU passes
       console.log('CPU passing')
@@ -1106,41 +1607,61 @@ export default function CardGame() {
       const nextPlayerIndex = (currentPlayerIndex + 1) % playersToUse.length
       const nextPlayer = playersToUse[nextPlayerIndex]
       
-      console.log('Next player after pass:', nextPlayer.name, 'isCpu:', nextPlayer.isCpu)
-      
-             // Update all states at once - RESET lastPlay when CPU passes
-       setCurrentPlayer(nextPlayer.id)
-       setIsMyTurn(nextPlayer.id === user.uid)
-       setCpuThinking(false)
-       setLastPlay(null) // Reset lastPlay so next player can play anything
+             // Add CPU to passed players
+       const passedPlayersToUse = currentPassedPlayers || passedPlayers
+       const newPassedPlayers = [...passedPlayersToUse, cpuPlayer.id]
        
-       // Update players state to ensure consistency
+       // Check if all players have passed on this play
+       // We need to exclude the player who made the original play from the count
+       const originalPlayerId = lastPlayData?.playerId
+       const playersWhoCanPass = playersToUse.filter(p => p.id !== originalPlayerId)
+       const allPlayersPassed = newPassedPlayers.length === playersWhoCanPass.length
+       
+       // Debug: Check if this CPU is the original player
+       if (cpuPlayer.id === originalPlayerId) {
+         console.log('ERROR: CPU is trying to pass on their own play! This should not happen.')
+         console.log('CPU ID:', cpuPlayer.id)
+         console.log('Original player ID:', originalPlayerId)
+         return
+       }
+      
+             console.log('CPU pass - Passed players:', newPassedPlayers)
+       console.log('CPU pass - Original player ID:', originalPlayerId)
+       console.log('CPU pass - Players who can pass:', playersWhoCanPass.map(p => p.name))
+       console.log('CPU pass - Total players who can pass:', playersWhoCanPass.length)
+       console.log('CPU pass - All players passed:', allPlayersPassed)
+      
+      // Clear the timeout since we're completing successfully
+      clearTimeout(timeout)
+      
+      // Update all states at once
+      setCurrentPlayer(nextPlayer.id)
+      setIsMyTurn(nextPlayer.id === user.uid)
+      setCpuThinking(false)
+      setPassedPlayers(allPlayersPassed ? [] : newPassedPlayers)
+      
+             if (allPlayersPassed) {
+         setLastPlay(null)
+         console.log('CPU pass - All players passed, resetting lastPlay to null')
+       } else {
+         console.log('CPU pass - Not all players passed yet, keeping lastPlay:', lastPlayData?.cards?.map(c => c.value))
+       }
+       
        setPlayers(playersToUse)
        
        // Always show my hand if I'm the user
        const myPlayer = playersToUse.find(p => p.id === user.uid)
-       console.log('CPU pass - My hand before update:', myPlayer ? myPlayer.hand.map(c => c.value) : [])
        setMyHand(myPlayer ? myPlayer.hand : [])
        
-       // Force a re-render to ensure state is updated
-       setTimeout(() => {
-         console.log('CPU pass - State update verification - My hand after update:', myPlayer ? myPlayer.hand.map(c => c.value) : [])
-       }, 0)
-      
-      toast(`${cpuPlayer.name} passed`)
-      
-             // If next player is CPU, continue the turn
+       toast(`${cpuPlayer.name} passed`)
+       
+       // If next player is CPU, continue the turn
        if (nextPlayer.isCpu) {
-         console.log('Next player is CPU, continuing turn chain after pass')
          setTimeout(() => {
-           // Use the updated players data to ensure consistency
-           const updatedPlayersForNextTurn = playersToUse.map(player => {
-             if (player.id === user.uid) {
-               return { ...player, hand: myPlayer ? myPlayer.hand : [] }
-             }
-             return player
-           })
-           handleCpuTurn(nextPlayer, updatedPlayersForNextTurn, null) // Pass null as lastPlay since it's reset
+           const nextLastPlay = allPlayersPassed ? null : lastPlayData
+           console.log('CPU pass - Passing to next CPU turn - nextLastPlay:', nextLastPlay ? nextLastPlay.cards.map(c => c.value) : 'null')
+           // Pass the updated passedPlayers to the next CPU turn
+           handleCpuTurn(nextPlayer, playersToUse, nextLastPlay, allPlayersPassed ? [] : newPassedPlayers)
          }, 1000)
        }
     }
@@ -1162,9 +1683,20 @@ export default function CardGame() {
        return
      }
      
-     if (lastPlay && !canBeat(selectedCards, lastPlay.cards)) {
-       toast.error('Your cards must beat the previous play')
-       return
+     console.log('Checking if user play beats last play...')
+     console.log('Last play is null:', lastPlay === null)
+     console.log('Last play object:', lastPlay)
+     if (lastPlay) {
+       console.log('Last play cards:', lastPlay.cards.map(c => c.value))
+       console.log('User selected cards:', selectedCards.map(c => c.value))
+       const canUserBeat = canBeat(selectedCards, lastPlay.cards)
+       console.log('Can user beat last play:', canUserBeat)
+       if (!canUserBeat) {
+         toast.error('Your cards must beat the previous play')
+         return
+       }
+     } else {
+       console.log('No last play, user can play any valid combination')
      }
      
      // Remove played cards from hand
@@ -1205,6 +1737,7 @@ export default function CardGame() {
      setCurrentPlayer(nextPlayer.id)
      setIsMyTurn(false)
      setMyHand(updatedHand)
+     setPassedPlayers([]) // Reset passed players when someone makes a new play
      
      // Force a re-render to ensure state is updated
      setTimeout(() => {
@@ -1226,7 +1759,7 @@ export default function CardGame() {
       if (nextPlayer.isCpu) {
         console.log('Next player is CPU, starting CPU turn')
         setTimeout(() => {
-          handleCpuTurn(nextPlayer, updatedPlayers, newLastPlay)
+          handleCpuTurn(nextPlayer, updatedPlayers, newLastPlay, [])
         }, 1000)
       } else {
        console.log('Next player is user, setting turn')
@@ -1251,18 +1784,44 @@ export default function CardGame() {
      
      console.log('Next player:', nextPlayer.name, 'isCpu:', nextPlayer.isCpu)
      
+     // Add user to passed players
+     const newPassedPlayers = [...passedPlayers, user.uid]
+     
+     // Check if all players have passed on this play
+     // We need to exclude the player who made the original play from the count
+     const originalPlayerId = lastPlay?.playerId
+     const playersWhoCanPass = players.filter(p => p.id !== originalPlayerId)
+     const allPlayersPassed = newPassedPlayers.length === playersWhoCanPass.length
+     
+     console.log('Passed players:', newPassedPlayers)
+     console.log('Original player ID:', originalPlayerId)
+     console.log('Players who can pass:', playersWhoCanPass.map(p => p.name))
+     console.log('Total players who can pass:', playersWhoCanPass.length)
+     console.log('All players passed:', allPlayersPassed)
+     
      setCurrentPlayer(nextPlayer.id)
      setIsMyTurn(false)
-     setLastPlay(null) // Reset lastPlay when user passes
+     setPassedPlayers(allPlayersPassed ? [] : newPassedPlayers) // Reset if all passed, otherwise keep track
+     
+     // Reset lastPlay only if all players have passed
+     if (allPlayersPassed) {
+       setLastPlay(null)
+       console.log('All players passed, resetting lastPlay to null')
+     } else {
+       console.log('Not all players passed yet, keeping lastPlay:', lastPlay?.cards?.map(c => c.value))
+     }
      
      toast('You passed')
      
      // If next player is CPU, handle their turn
      if (nextPlayer.isCpu) {
        console.log('Next player is CPU, starting CPU turn after pass')
-               setTimeout(() => {
-          handleCpuTurn(nextPlayer, players, null) // Pass null as lastPlay since it's reset
-        }, 1000)
+       setTimeout(() => {
+         // Pass the appropriate lastPlay (null if all passed, otherwise the original)
+         const nextLastPlay = allPlayersPassed ? null : lastPlay
+         console.log('Passing to CPU turn - nextLastPlay:', nextLastPlay ? nextLastPlay.cards.map(c => c.value) : 'null')
+         handleCpuTurn(nextPlayer, players, nextLastPlay, allPlayersPassed ? [] : newPassedPlayers)
+       }, 1000)
      } else {
        console.log('Next player is user, setting turn after pass')
        setIsMyTurn(true)
@@ -1296,6 +1855,7 @@ export default function CardGame() {
     setMyHand([])
     setSelectedCards([])
     setLastPlay(null)
+    setPassedPlayers([])
     setIsMyTurn(false)
     setWinner(null)
     setCurrentPlayer(null)
@@ -1303,6 +1863,11 @@ export default function CardGame() {
     setGameId(null)
     
     toast.success('Left practice game')
+  }
+
+  const handleLeavePracticeGameClick = () => {
+    setPendingLeaveAction(() => leavePracticeGame)
+    setShowLeaveConfirmation(true)
   }
 
 
@@ -1597,7 +2162,7 @@ export default function CardGame() {
                                  {/* Action Buttons */}
                  <div className="space-y-2">
                    <button
-                     onClick={isPracticeMode ? leavePracticeGame : leaveGame}
+                     onClick={isPracticeMode ? handleLeavePracticeGameClick : handleLeaveGameClick}
                      className="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg transition"
                    >
                      {isPracticeMode ? 'Leave Practice Game' : 'Leave Game'}
@@ -1800,7 +2365,7 @@ export default function CardGame() {
                   )}
                  <div className="flex justify-center mt-4">
                    <button
-                     onClick={isPracticeMode ? leavePracticeGame : leaveGame}
+                     onClick={isPracticeMode ? handleLeavePracticeGameClick : handleLeaveGameClick}
                      className="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg transition"
                    >
                      {isPracticeMode ? 'Leave Practice Game' : 'Leave Game'}
@@ -1847,6 +2412,7 @@ export default function CardGame() {
                            setMyHand([])
                            setSelectedCards([])
                            setLastPlay(null)
+                           setPassedPlayers([])
                            setIsMyTurn(false)
                            setWinner(null)
                            setCurrentPlayer(null)
@@ -1866,6 +2432,7 @@ export default function CardGame() {
                            setMyHand([])
                            setSelectedCards([])
                            setLastPlay(null)
+                           setPassedPlayers([])
                            setIsMyTurn(false)
                            setWinner(null)
                            setCurrentPlayer(null)
@@ -1901,6 +2468,24 @@ export default function CardGame() {
           </div>
         </div>
       </div>
+
+      {/* Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={showLeaveConfirmation}
+        onClose={() => setShowLeaveConfirmation(false)}
+        onConfirm={() => {
+          if (pendingLeaveAction) {
+            pendingLeaveAction()
+          }
+        }}
+        title="Leave Game?"
+        message="Are you sure you want to leave the game? This action cannot be undone."
+        confirmText="Leave Game"
+        cancelText="Stay"
+        confirmColor="bg-red-500 hover:bg-red-600"
+        cancelColor="bg-gray-500 hover:bg-gray-600"
+      />
     </ProtectedRoute>
   )
 }
+

@@ -101,6 +101,15 @@ export default function HomeMenu() {
                 Bebe Casino 🎰
               </Link>
             </motion.div>
+            <motion.div variants={item}>
+              <Link
+                href="/spin-wheel"
+                className="block bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-semibold
+                           px-6 py-3 rounded-2xl text-lg transition"
+              >
+                Spin the Wheel 🎡
+              </Link>
+            </motion.div>
           </motion.div>
         </motion.div>
       </div>

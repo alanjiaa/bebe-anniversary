@@ -37,9 +37,7 @@ signInAnonymously(auth).then(() => {
 const httpServer = createServer()
 const io = new Server(httpServer, {
   cors: {
-    origin: process.env.NODE_ENV === 'production'
-      ? ["https://bebe-anniversary.vercel.app", "https://www.bebe-anniversary.vercel.app"]
-      : "http://localhost:3000",
+    origin: "*", // Allow all origins to avoid CORS issues in production (Vercel previews etc)
     methods: ["GET", "POST"]
   }
 })

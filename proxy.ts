@@ -12,7 +12,7 @@ export const config = {
   ]
 }
 
-export function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
   // Skip auth for login and signup pages
   if (req.nextUrl.pathname === '/login' || req.nextUrl.pathname === '/signup') {
     return NextResponse.next()

@@ -275,7 +275,24 @@ export default function CardGame() {
 
               {/* Join Game */}
               <div className="bg-white/10 p-6 rounded-xl backdrop-blur-sm">
-                <h2 className="text-2xl text-white mb-4">Join Game</h2>
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-2xl text-white">Join Game</h2>
+                  <button
+                    onClick={async () => {
+                      toast.loading('Cleaning up...', { id: 'cleanup' });
+                      try {
+                        const res = await fetch('/api/cardgame/cleanup', { method: 'POST' });
+                        const data = await res.json();
+                        toast.success(`Removed ${data.deletedCount} old games`, { id: 'cleanup' });
+                      } catch (e) {
+                        toast.error('Cleanup failed', { id: 'cleanup' });
+                      }
+                    }}
+                    className="text-xs text-gray-400 hover:text-white underline"
+                  >
+                    Clean Stale Games
+                  </button>
+                </div>
                 {availableGames.length === 0 ? (
                   <p className="text-white/60">No games available</p>
                 ) : (

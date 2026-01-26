@@ -1,10 +1,10 @@
 // pages/casino/cardgame.js
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import { useCart } from '@/context/CartContext'
-import { FaCoins, FaUsers, FaPlay, FaTimes, FaCheck, FaWifi } from 'react-icons/fa'
+import { FaCoins, FaUsers, FaPlay, FaTimes, FaCheck } from 'react-icons/fa'
 import { toast } from 'react-hot-toast'
 import { auth, db } from '@/lib/firebase'
 import ConfirmationModal from '@/components/ConfirmationModal'
@@ -14,36 +14,23 @@ import {
   collection,
   query,
   where,
-  orderBy,
-  serverTimestamp
+  orderBy
 } from 'firebase/firestore'
-import io from 'socket.io-client'
-
-// We can optionally import isValidCombination for UI feedback if we configure Next.js to handle it,
-// but for now let's rely on server validation or basic UI checks. 
-// Ideally we should use the shared logic but importing commonJS into Next.js client component might require config.
-// Let's implement basic UI validation here or just trust server.
-// For best UX, simple check:
-const CARD_VALUES = ['3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A', '2']
 
 export default function CardGame() {
-  const { pounds, updatePounds } = useCart()
+  const { pounds } = useCart()
   const [gameState, setGameState] = useState('lobby') // lobby, waiting, playing, finished
   const [players, setPlayers] = useState([])
   const [currentPlayer, setCurrentPlayer] = useState(null)
   const [myHand, setMyHand] = useState([])
   const [selectedCards, setSelectedCards] = useState([])
   const [lastPlay, setLastPlay] = useState(null)
-  const [passedPlayers, setPassedPlayers] = useState([]) // From server
   const [gameId, setGameId] = useState(null)
-  const [socket, setSocket] = useState(null)
   const [betAmount, setBetAmount] = useState(1)
   const [mounted, setMounted] = useState(false)
   const [isMyTurn, setIsMyTurn] = useState(false)
   const [winner, setWinner] = useState(null)
   const [availableGames, setAvailableGames] = useState([])
-  const [joinGameId, setJoinGameId] = useState('')
-  const [onlinePlayers, setOnlinePlayers] = useState(0)
 
   // Confirmation modal state
   const [showLeaveConfirmation, setShowLeaveConfirmation] = useState(false)
@@ -54,68 +41,6 @@ export default function CardGame() {
   useEffect(() => {
     setMounted(true)
   }, [])
-
-  useEffect(() => {
-    if (!user) return
-
-    // Initialize socket connection
-    const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL ||
-      (process.env.NODE_ENV === 'production'
-        ? 'https://bebe-anniversary.vercel.app'  // Updated to production URL if needed
-        : 'http://localhost:3001')
-
-    // In production, we might need specific URL logic, but let's stick to what was there or derived.
-    // The previous code had: 'https://bebe-anniversary-production.up.railway.app'
-    // Let's use that if it was working or intended.
-    const actualSocketUrl = process.env.NODE_ENV === 'production'
-      ? 'https://bebe-anniversary-production.up.railway.app'
-      : 'http://localhost:3001'
-
-    console.log('Connecting to Socket.IO server:', actualSocketUrl)
-
-    const newSocket = io(actualSocketUrl, {
-      auth: {
-        userId: user.uid,
-        displayName: user.displayName || user.email
-      },
-      transports: ['websocket', 'polling']
-    })
-
-    newSocket.on('connect', () => {
-      console.log('Connected to game server')
-    })
-
-    newSocket.on('connect_error', (error) => {
-      console.error('Socket connection error:', error)
-      toast.error('Failed to connect to game server')
-    })
-
-    newSocket.on('gameCreated', ({ gameId }) => {
-      setGameId(gameId)
-      toast.success('Game created! Waiting for players...')
-    })
-
-    newSocket.on('error', ({ message }) => {
-      toast.error(message)
-    })
-
-    // Server events that might not come through Firestore listener instantly
-    newSocket.on('gameStarted', () => {
-      toast.success('Game Started!')
-    })
-
-    newSocket.on('onlinePlayersUpdate', (data) => {
-      setOnlinePlayers(data.count)
-    })
-
-    newSocket.emit('getOnlinePlayers')
-
-    setSocket(newSocket)
-
-    return () => {
-      newSocket.disconnect()
-    }
-  }, [user])
 
   // Listen for available games
   useEffect(() => {
@@ -131,8 +56,7 @@ export default function CardGame() {
       const games = []
       snapshot.forEach((doc) => {
         const gameData = doc.data()
-        // Filter out games that are stale (older than 24h) handled by server, but we can also filter UI
-        // Filter out full games or games user is already in (unless we want to show them)
+        // Filter out full games
         if (gameData.players.length < 4) {
           games.push({
             id: doc.id,
@@ -153,7 +77,6 @@ export default function CardGame() {
     const gameRef = doc(db, 'cardGames', gameId)
     const unsubscribe = onSnapshot(gameRef, (doc) => {
       if (!doc.exists()) {
-        // Game deleted?
         if (gameState !== 'lobby') {
           toast('Game ended or closed')
           setGameState('lobby')
@@ -173,7 +96,7 @@ export default function CardGame() {
   const handleGameUpdate = (data) => {
     setGameState(data.gameState)
     setPlayers(data.players)
-    setCurrentPlayer(data.currentPlayer)
+    setCurrentPlayer(data.currentTurn) // Note: server uses currentTurn, frontend used currentPlayer. Fixed to matches server.
     setLastPlay(data.lastPlay)
     setWinner(data.winner)
 
@@ -181,8 +104,7 @@ export default function CardGame() {
       const myPlayer = data.players.find(p => p.id === user.uid)
       if (myPlayer) {
         setMyHand(myPlayer.hand || [])
-        setIsMyTurn(data.currentPlayer === user.uid)
-        // If I was kicked or something?
+        setIsMyTurn(data.currentTurn === user.uid)
       } else {
         // I am not in players list?
         if (gameId) {
@@ -192,78 +114,96 @@ export default function CardGame() {
         }
       }
     }
-
-    // Clear selected cards if turn changed or game state changed
-    // We can't strictly detect "turn changed" easily without prev state, 
-    // but usually if it's not my turn, I shouldn't have cards selected? 
-    // Or just clear on successful play.
   }
 
-  const createGame = () => {
-    if (!user || !socket) return
+  // API Call Helper
+  const apiCall = async (endpoint, body) => {
+    try {
+      const res = await fetch(`/api/cardgame/${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...body, userId: user.uid })
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.message || 'Action failed')
+      return data
+    } catch (e) {
+      toast.error(e.message)
+      throw e
+    }
+  }
+
+  const createGame = async () => {
+    if (!user) return
     if (betAmount > (pounds || 0)) {
       toast.error('Not enough pounds!')
       return
     }
-    // We can allow solo testing if needed, but original code blocked < 2 players.
-    // Let's trust server validation or allow it but warn.
-    socket.emit('createGame', { betAmount })
+
+    try {
+      // Pass full user object structure expected by create endpoint
+      const { gameId } = await apiCall('create', {
+        betAmount,
+        createdBy: { uid: user.uid, displayName: user.displayName, email: user.email }
+      })
+      setGameId(gameId)
+      toast.success('Game created! Waiting for players...')
+    } catch (e) { }
   }
 
-  const joinGame = (id) => {
-    if (!user || !socket) return
-    socket.emit('joinGame', { gameId: id })
-    // We assume success and wait for Firestore update to setGameId?
-    // Better: setGameId immediately so we listen to it?
-    // Actually server emits nothing on success for join, so we rely on user seeing updated list or whatever.
-    // But we need to switch view.
-    // Let's setGameId here. If it fails, the onSnapshot will handle empty/error or we get socket error.
-    setGameId(id)
+  const joinGame = async (id) => {
+    if (!user) return
+    try {
+      await apiCall('join', {
+        gameId: id,
+        user: { uid: user.uid, displayName: user.displayName, email: user.email }
+      })
+      setGameId(id)
+    } catch (e) { }
   }
 
   const leaveGame = async () => {
-    if (!gameId || !socket) return
-    socket.emit('leaveGame', { gameId })
+    if (!gameId) return
+    try {
+      await apiCall('leave', { gameId })
+    } catch (e) {
+      console.error(e)
+    }
+    // Always reset local state even if API fails (force leave)
     setGameId(null)
     setGameState('lobby')
     setMyHand([])
     setPlayers([])
   }
 
-  const handleLeaveGameClick = () => {
-    setPendingLeaveAction(() => leaveGame)
-    setShowLeaveConfirmation(true)
+  const toggleReady = async () => {
+    if (!gameId) return
+    await apiCall('action', { gameId, type: 'toggleReady' })
   }
 
-  const toggleReady = () => {
-    if (!gameId || !socket) return
-    socket.emit('toggleReady', { gameId })
+  const startGame = async () => {
+    if (!gameId) return
+    await apiCall('action', { gameId, type: 'startGame' })
   }
 
-  const startGame = () => {
-    if (!gameId || !socket) return
-    socket.emit('startGame', { gameId })
-  }
-
-  const playCards = () => {
-    if (!gameId || !socket || !isMyTurn) return
+  const playCards = async () => {
+    if (!gameId || !isMyTurn) return
     if (selectedCards.length === 0) return
 
-    socket.emit('playCards', { gameId, cards: selectedCards })
-    setSelectedCards([])
+    try {
+      await apiCall('action', { gameId, type: 'play', cards: selectedCards })
+      setSelectedCards([])
+    } catch (e) { }
   }
 
-  const pass = () => {
-    if (!gameId || !socket || !isMyTurn) return
-    socket.emit('pass', { gameId })
+  const pass = async () => {
+    if (!gameId || !isMyTurn) return
+    try {
+      await apiCall('action', { gameId, type: 'pass' })
+    } catch (e) { }
   }
 
   const selectCard = (card) => {
-    if (!isMyTurn && gameState === 'playing') {
-      // Optional: allow selecting even if not turn, but can't play?
-      // Standard UX: yes allow select.
-    }
-
     // Toggle
     const isSelected = selectedCards.some(c => c.id === card.id)
     if (isSelected) {
@@ -277,7 +217,6 @@ export default function CardGame() {
 
   // Render cards
   const renderCard = (card, index, isSelected = false, onClick = null) => {
-    // Simple card rendering
     const isRed = card.suit === '♥' || card.suit === '♦' || card.value === 'JOKER'
     return (
       <motion.div
@@ -345,7 +284,7 @@ export default function CardGame() {
                       <div key={game.id} className="flex justify-between items-center bg-black/20 p-3 rounded">
                         <div className="text-white">
                           <div>Host: {game.players[0]?.name}</div>
-                          <div className="text-sm opacity-75">Bet: £{game.betAmount} • Players: {game.players.length}/4</div>
+                          <div className="text-sm opacity-75">Bet: £{game.betAmount} • Players: {game.players?.length}/4</div>
                         </div>
                         <button
                           onClick={() => joinGame(game.id)}
@@ -435,7 +374,7 @@ export default function CardGame() {
             {/* Game Area */}
             <div className="flex-1 relative flex flex-col justify-between p-4">
 
-              {/* Other Players (Simplified Layout) */}
+              {/* Other Players */}
               <div className="flex justify-around mb-8">
                 {players.filter(p => p.id !== user?.uid).map((p, i) => (
                   <div key={p.id} className={`text-center ${p.id === currentPlayer ? 'bg-yellow-500/20 p-2 rounded' : ''} ${p.passed ? 'opacity-50' : ''}`}>
@@ -444,7 +383,8 @@ export default function CardGame() {
                     </div>
                     <div className="text-white text-sm">{p.name}</div>
                     <div className="text-yellow-400 text-xs">{p.hand?.length} cards</div>
-                    {p.passed && <div className="text-red-400 text-xs font-bold">PASS</div>}
+                    {/* Visual cue for passed players? API doesn't send "passed" flag on player, just "passes" count on game. 
+                        We would need to infer or add logic. For now omit 'PASS' label unless we track it in global state. */}
                   </div>
                 ))}
               </div>
@@ -517,8 +457,13 @@ export default function CardGame() {
           isOpen={showLeaveConfirmation}
           onClose={() => setShowLeaveConfirmation(false)}
           onConfirm={() => {
-            if (pendingLeaveAction) pendingLeaveAction()
-            else leaveGame()
+            // Wrap confirmation action
+            if (pendingLeaveAction) {
+              pendingLeaveAction()
+              setPendingLeaveAction(null)
+            } else {
+              leaveGame()
+            }
             setShowLeaveConfirmation(false)
           }}
           title="Leave Game?"

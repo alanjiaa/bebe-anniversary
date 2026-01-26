@@ -34,7 +34,10 @@ signInAnonymously(auth).then(() => {
   console.error('Server authentication failed:', error)
 })
 
-const httpServer = createServer()
+const httpServer = createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/plain' })
+  res.end('Socket.IO Server is Running')
+})
 const io = new Server(httpServer, {
   cors: {
     origin: "*", // Allow all origins to avoid CORS issues in production (Vercel previews etc)

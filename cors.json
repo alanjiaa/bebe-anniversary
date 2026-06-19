@@ -1,0 +1,7 @@
+[
+  {
+    "origin": ["http://localhost:3000", "https://bebe-app-f4bb8.web.app", "https://bebe-app-f4bb8.firebaseapp.com"],
+    "method": ["GET", "PUT", "POST", "DELETE", "OPTIONS"],
+    "maxAgeSeconds": 3600
+  }
+]

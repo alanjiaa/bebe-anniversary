@@ -5,13 +5,15 @@ const AirHockeyGame = dynamic(() => import('@/components/AirHockeyGame'), { ssr:
 
 export default function ArcadePage() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-900 to-blue-700 text-white p-8">
+    <div className="min-h-screen bg-[#faf8f2] flex flex-col items-center justify-center text-gray-800 p-8 pb-20">
       <AirHockeyGame />
-      <BackNavigation 
-        href="/home" 
-        text="← Back to Home" 
-        className="bg-white/20 hover:bg-white/30 text-white font-semibold px-6 py-3 rounded-2xl transition backdrop-blur-sm"
-      />
+      <div className="mt-8">
+        <BackNavigation 
+          href="/arcade" 
+          text="← Back to Arcade" 
+          className="bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 font-bold px-6 py-3 rounded-2xl transition shadow-sm"
+        />
+      </div>
     </div>
   )
 }

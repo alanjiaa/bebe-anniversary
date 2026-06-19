@@ -5,7 +5,7 @@ import { AuthProvider } from '@/context/AuthContext'
 import { CartProvider } from '../src/context/CartContext'
 import dynamic from 'next/dynamic'
 import { Toaster } from 'react-hot-toast'
-import UserHeader from '../src/components/UserHeader'
+import GlobalNav from '../src/components/GlobalNav'
 import MusicPlayer from '../src/components/MusicPlayer'
 
 // Only load the CartPreview on the client to avoid SSR mismatches
@@ -28,7 +28,7 @@ export default function MyApp({ Component, pageProps }) {
   return (
     <AuthProvider>
       <CartProvider>
-        {showHeader && <UserHeader />}
+        {showHeader && <GlobalNav />}
         <Component {...pageProps} />
         {showCartPreview && <CartPreview />}
         {showMusicPlayer && <MusicPlayer />}
